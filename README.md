@@ -429,6 +429,36 @@ Issues and improvements are welcome for medical-image rendering, performance, DI
 
 Built using the broader Python medical-imaging and open-source visualization ecosystem, including FastAPI, NumPy, pydicom, VTK.js, React and the Cornerstone ecosystem. This project aims to make 3D sinus CT/CBCT exploration more approachable for research and technical visualization.
 
+
+## 👨‍💻 Developers & Project Contributors
+
+**Sinus 3D Viewer Pro** was designed and developed by:
+
+### Meet the Developers
+
+| Developer | Role |
+|---|---|
+| **Sarfraz Khan** | Project Developer & Technical Contributor |
+| **Nabeel Ahmed** | Project Developer & Technical Contributor |
+
+### About the Development Team
+
+This project represents the collaborative efforts of **Sarfraz Khan** and **Nabeel Ahmed**, focused on building an efficient, interactive, and accessible medical imaging visualization system.
+
+The development work focuses on DICOM image processing, 3D volume visualization, multiplanar reconstruction (MPR), performance optimization, and browser-based medical imaging technologies.
+
+Our goal is to bridge the gap between complex medical imaging data and intuitive visualization tools through modern software engineering.
+
+---
+
+### Developed By
+
+**Sarfraz Khan & Nabeel Ahmed**
+
+*Sinus 3D Viewer Pro — Transforming Medical Imaging into Interactive 3D Visualization.*
+
+© 2026 Sarfraz Khan & Nabeel Ahmed. All rights reserved.
+
 ---
 
 <div align="center">
