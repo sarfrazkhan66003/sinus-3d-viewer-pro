@@ -1,0 +1,535 @@
+﻿
+========== frontend\src\App.tsx ==========
+ 730:               className="rounded-lg border
+ 731:                 border-red-800 bg-red-950/40
+ 732:                 p-3 text-sm text-red-200"
+ 733:             >
+ 734:               {GENERIC_LOGIN_ERROR}
+ 735:             </p>
+ 736:           )}
+ 737: 
+ 738:           <button
+ 739:             type="submit"
+ 740:             disabled={submitting}
+ 741:             className="w-full rounded-lg
+ 742:               bg-cyan-500 px-4 py-3
+ 743:               font-semibold text-slate-950
+ 744:               hover:bg-cyan-400
+ 745:               disabled:cursor-not-allowed
+ 746:               disabled:opacity-50"
+ 747:           >
+ 748:             {submitting
+ 749:               ? "Signing in..."
+ 750:               : "Sign in"}
+ 751:           </button>
+ 752:         </form>
+ 753: 
+ 754:         <p className="mt-7 text-xs text-slate-500">
+ 755:           Authorized access only.
+ 756:           Medical images require appropriate
+ 757:           privacy safeguards.
+ 758:         </p>
+ 759:       </section>
+ 760:     </main>
+ 761:   );
+ 762: }
+ 763: 
+ 764: 
+ 765: // ============================================================
+ 766: // 09 â€” AUTHENTICATED APPLICATION SHELL
+ 767: // ============================================================
+ 768: 
+ 769: function ApplicationShell() {
+ 770:   const { logout } = useAuth();
+ 771:   const navigate = useNavigate();
+ 772: 
+ 773:   const [logoutError, setLogoutError] =
+ 774:     useState<string | null>(null);
+ 775: 
+ 776:   async function handleLogout(): Promise<void> {
+ 777:     setLogoutError(null);
+ 778: 
+ 779:     try {
+ 780:       await logout();
+ 781: 
+ 782:       navigate("/login", {
+ 783:         replace: true,
+ 784:       });
+ 785:     } catch {
+ 786:       setLogoutError(
+ 787:         "Server sign-out could not be confirmed. " +
+ 788:         "Close this browser session and contact " +
+ 789:         "the system operator if necessary.",
+ 790:       );
+ 791:     }
+ 792:   }
+ 793: 
+ 794:   return (
+ 795:     <div
+ 796:       className="flex min-h-screen flex-col
+ 797:         bg-slate-950 text-slate-100"
+ 798:     >
+ 799:       <header
+ 800:         className="flex flex-wrap items-center
+ 801:           justify-between gap-4 border-b
+ 802:           border-slate-800 bg-slate-900
+ 803:           px-5 py-4"
+ 804:       >
+ 805:         <div>
+ 806:           <h1 className="text-lg font-bold">
+ 807:             Sinus Viewer
+ 808:           </h1>
+ 809:           <p className="text-xs text-slate-400">
+ 810:             CT / CBCT Imaging Workspace
+ 811:           </p>
+ 812:         </div>
+ 813: 
+ 814:         <nav
+ 815:           aria-label="Primary navigation"
+ 816:           className="flex items-center gap-4"
+ 817:         >
+ 818:           <Link
+ 819:             to="/viewer"
+ 820:             className="text-sm text-slate-200
+ 821:               hover:text-cyan-300"
+ 822:           >
+ 823:             Viewer
+ 824:           </Link>
+ 825: 
+ 826:           <Link
+ 827:             to="/settings"
+ 828:             className="text-sm text-slate-200
+ 829:               hover:text-cyan-300"
+ 830:           >
+ 831:             Settings
+ 832:           </Link>
+ 833: 
+ 834:           <button
+ 835:             type="button"
+ 836:             onClick={() => {
+ 837:               void handleLogout();
+ 838:             }}
+ 839:             className="rounded-lg border
+ 840:               border-slate-700 px-3 py-2
+ 841:               text-sm hover:bg-slate-800"
+ 842:           >
+ 843:             Sign out
+ 844:           </button>
+ 845:         </nav>
+ 846:       </header>
+ 847: 
+ 848:       {logoutError && (
+ 849:         <div
+ 850:           role="alert"
+ 851:           className="border-b border-amber-800
+ 852:             bg-amber-950/40 px-5 py-3
+ 853:             text-sm text-amber-200"
+ 854:         >
+ 855:           {logoutError}
+ 856:         </div>
+ 857:       )}
+ 858: 
+ 859:       <div className="flex min-h-0 flex-1">
+ 860:         <Outlet />
+ 861:       </div>
+ 862: 
+ 863:       <footer
+ 864:         className="border-t border-slate-800
+ 865:           bg-slate-900 px-5 py-2
+ 866:           text-xs text-slate-500"
+ 867:       >
+ 868:         Sinus Viewer â€” Research and
+ 869:         visualization environment
+ 870:       </footer>
+ 871:     </div>
+ 872:   );
+ 873: }
+ 874: 
+ 875: 
+ 876: // ============================================================
+ 877: // 10 â€” VIEWER WORKSPACE PLACEHOLDER
+ 878: // ============================================================
+ 879: 
+ 880: function ViewerPage() {
+ 881:   const {
+ 882:     status,
+ 883:     logout,
+ 884:     refreshSession,
+ 885:   } = useAuth();
+ 886:   const sessionStatus =
+ 887:     status === "authenticated"
+ 888:       ? "authenticated"
+ 889:       : "authentication-required";
+ 890:   return (
+ 891:     <AppShell
+ 892:       sessionStatus={sessionStatus}
+ 893:       adaptVolume={(loaded) => ({
+ 894:         voxels: loaded.voxels,
+ 895:         shapeZYX: loaded.shapeZYX,
+ 896:         geometry: loaded.geometry,
+ 897:       })}
+ 898:       onSignOut={logout}
+ 899:       onAuthenticationRequired={() => {
+ 900:         void refreshSession();
+ 901:       }}
+ 902:     />
+ 903:   );
+ 904: }
+ 905: 
+ 906: 
+ 907: // ============================================================
+ 908: // 11 â€” SETTINGS PLACEHOLDER
+ 909: // ============================================================
+ 910: 
+ 911: function SettingsPage() {
+ 912:   const { session } = useAuth();
+ 913: 
+ 914:   return (
+ 915:     <main className="w-full px-6 py-8">
+ 916:       <h2 className="text-2xl font-semibold">
+ 917:         Application Settings
+ 918:       </h2>
+ 919: 
+ 920:       <p className="mt-3 text-sm text-slate-400">
+ 921:         Display preferences and viewer controls
+ 922:         will be implemented in later files.
+ 923:       </p>
+ 924: 
+ 925:       <div
+
+========== frontend\src\App.tsx ==========
+ 975: 
+ 976: 
+ 977: // ============================================================
+ 978: // 13 â€” ROUTE CONFIGURATION
+ 979: // ============================================================
+ 980: 
+ 981: function ApplicationRoutes() {
+ 982:   return (
+ 983:     <Routes>
+ 984:       <Route
+ 985:         path="/login"
+ 986:         element={<LoginPage />}
+ 987:       />
+ 988: 
+ 989:       <Route element={<ProtectedRoute />}>
+ 990:         <Route
+ 991:           element={<ApplicationShell />}
+ 992:         >
+ 993:           <Route
+ 994:             path="/"
+ 995:             element={
+ 996:               <Navigate
+ 997:                 to="/viewer"
+ 998:                 replace
+ 999:               />
+1000:             }
+1001:           />
+1002: 
+1003:           <Route
+1004:             path="/viewer"
+1005:             element={<ViewerPage />}
+1006:           />
+1007: 
+1008:           <Route
+1009:             path="/settings"
+1010:             element={<SettingsPage />}
+1011:           />
+1012:         </Route>
+1013:       </Route>
+1014: 
+1015:       <Route
+1016:         path="/404"
+1017:         element={<NotFoundPage />}
+1018:       />
+1019: 
+1020:       <Route
+1021:         path="*"
+1022:         element={<NotFoundPage />}
+1023:       />
+1024:     </Routes>
+1025:   );
+1026: }
+1027: 
+1028: 
+1029: // ============================================================
+1030: // 14 â€” APPLICATION EXPORT
+1031: // ============================================================
+1032: 
+1033: export default function App() {
+1034:   return (
+1035:     <AuthProvider>
+1036:       <ApplicationRoutes />
+1037:     </AuthProvider>
+1038:   );
+1039: }
+1040: 
+
+========== frontend\src\components\layout\AppShell.tsx ==========
+ 285:       setNotice(
+ 286:         "Session authentication is required.",
+ 287:       );
+ 288: 
+ 289:       onAuthenticationRequired?.();
+ 290:     }, [onAuthenticationRequired]);
+ 291: 
+ 292:   // ==========================================================
+ 293:   // 08 â€” SAFE ERROR PRESENTATION
+ 294:   // ==========================================================
+ 295: 
+ 296:   const handleError = useCallback(
+ 297:     (_message: string): void => {
+ 298:       /**
+ 299:        * Do not forward raw server exceptions, source
+ 300:        * paths or patient-related information.
+ 301:        */
+ 302:       setError(publicErrorMessage());
+ 303:     },
+ 304:     [],
+ 305:   );
+ 306: 
+ 307:   // ==========================================================
+ 308:   // 09 â€” OPEN AUTHORIZED SERIES
+ 309:   // ==========================================================
+ 310: 
+ 311:   const handleOpenSeries = useCallback(
+ 312:     (next: DatasetViewerSelection): void => {
+ 313:       if (!authenticated || signingOut) {
+ 314:         return;
+ 315:       }
+ 316: 
+ 317:       setSelection({
+ 318:         datasetSessionId:
+ 319:           next.datasetSessionId,
+ 320:         seriesHandle:
+ 321:           next.seriesHandle,
+ 322:       });
+ 323: 
+ 324:       setError(null);
+ 325:       setNotice(null);
+ 326:       setShowPreviews(false);
+ 327:       setPage("viewer");
+ 328:     },
+ 329:     [authenticated, signingOut],
+ 330:   );
+ 331: 
+ 332:   // ==========================================================
+ 333:   // 10 â€” NAVIGATE BACK TO BROWSER
+ 334:   // ==========================================================
+ 335: 
+ 336:   /**
+ 337:    * Returning to the browser unmounts ViewerWorkspace.
+ 338:    * Its owned volume service is reset on cleanup.
+ 339:    *
+ 340:    * Preserve opaque selection for optional previews,
+ 341:    * but never keep decoded voxels in AppShell state.
+ 342:    */
+ 343:   const openDatasets = useCallback((): void => {
+ 344:     if (!authenticated || signingOut) {
+ 345:       return;
+ 346:     }
+ 347: 
+ 348:     setPage("datasets");
+ 349:     setError(null);
+ 350:   }, [authenticated, signingOut]);
+ 351: 
+ 352:   const openViewer = useCallback((): void => {
+ 353:     if (
+ 354:       !authenticated ||
+ 355:       signingOut ||
+ 356:       selection === null
+ 357:     ) {
+ 358:       return;
+ 359:     }
+ 360: 
+ 361:     setPage("viewer");
+ 362:     setError(null);
+ 363:   }, [authenticated, signingOut, selection]);
+ 364: 
+ 365:   // ==========================================================
+ 366:   // 11 â€” PREVIEW TOGGLE
+ 367:   // ==========================================================
+ 368: 
+ 369:   const togglePreviews = useCallback((): void => {
+ 370:     if (
+
+========== frontend\src\components\layout\AppShell.tsx ==========
+ 405:       } catch {
+ 406:         setError(
+ 407:           "Unable to complete sign-out. " +
+ 408:           "Please retry before leaving this device.",
+ 409:         );
+ 410:       } finally {
+ 411:         setSigningOut(false);
+ 412:       }
+ 413:     },
+ 414:     [onSignOut, signingOut],
+ 415:   );
+ 416: 
+ 417:   // ==========================================================
+ 418:   // 13 â€” PAGE AND ACCESS CONTROL
+ 419:   // ==========================================================
+ 420: 
+ 421:   const viewerAvailable =
+ 422:     selection !== null && authenticated;
+ 423: 
+ 424:   const showViewer =
+ 425:     authenticated &&
+ 426:     !signingOut &&
+ 427:     page === "viewer" &&
+ 428:     viewerAvailable;
+ 429: 
+ 430:   const showBrowser =
+ 431:     authenticated &&
+ 432:     !signingOut &&
+ 433:     page === "datasets";
+ 434: 
+ 435:   const showPreviewPanel =
+ 436:     showBrowser &&
+ 437:     showPreviews &&
+ 438:     selection !== null;
+ 439: 
+ 440:   // ==========================================================
+ 441:   // 14 â€” JSX
+ 442:   // ==========================================================
+ 443: 
+ 444:   return (
+ 445:     <div
+ 446:       className={className}
+ 447:       style={rootStyle}
+ 448:       data-app-shell="true"
+ 449:       data-current-page={page}
+ 450:       aria-label="Sinus Viewer application"
+ 451:     >
+ 452:       <header style={headerStyle}>
+ 453:         <div>
+ 454:           <strong
+ 455:             style={{
+ 456:               display: "block",
+ 457:               fontSize: 16,
+ 458:               color: "#f8fafc",
+ 459:             }}
+ 460:           >
+ 461:             {applicationTitle}
+ 462:           </strong>
+ 463: 
+ 464:           <span
+ 465:             style={{
+ 466:               fontSize: 11,
+ 467:               color: "#94a3b8",
+ 468:             }}
+ 469:           >
+ 470:             DICOM CT / CBCT Imaging Workspace
+ 471:           </span>
+ 472:         </div>
+ 473: 
+ 474:         <nav
+ 475:           style={navigationStyle}
+ 476:           aria-label="Application navigation"
+ 477:         >
+ 478:           <button
+ 479:             type="button"
+ 480:             style={
+ 481:               page === "datasets"
+ 482:                 ? activeButtonStyle
+ 483:                 : buttonStyle
+ 484:             }
+ 485:             disabled={!authenticated || signingOut}
+ 486:             onClick={openDatasets}
+ 487:             aria-current={
+ 488:               page === "datasets"
+ 489:                 ? "page"
+ 490:                 : undefined
+ 491:             }
+ 492:           >
+ 493:             Datasets
+ 494:           </button>
+ 495: 
+
+========== frontend\src\components\layout\AppShell.tsx ==========
+ 555:           the medical imaging workspace.
+ 556:         </div>
+ 557:       )}
+ 558: 
+ 559:       {notice && (
+ 560:         <div
+ 561:           style={noticeStyle}
+ 562:           role="status"
+ 563:           aria-live="polite"
+ 564:         >
+ 565:           {notice}
+ 566:         </div>
+ 567:       )}
+ 568: 
+ 569:       {error && (
+ 570:         <div
+ 571:           style={errorStyle}
+ 572:           role="alert"
+ 573:         >
+ 574:           {error}
+ 575:         </div>
+ 576:       )}
+ 577: 
+ 578:       <div style={contentStyle}>
+ 579:         {showBrowser && (
+ 580:           <div
+ 581:             style={{
+ 582:               display: "flex",
+ 583:               flex: 1,
+ 584:               flexDirection: "column",
+ 585:               minWidth: 0,
+ 586:               minHeight: 0,
+ 587:               overflowY: "auto",
+ 588:             }}
+ 589:           >
+ 590:             <div
+ 591:               style={{
+ 592:                 minHeight: 300,
+ 593:                 flex: showPreviewPanel ? "0 0 auto" : 1,
+ 594:               }}
+ 595:             >
+ 596:               <DatasetBrowser
+ 597:                 onOpenSeries={handleOpenSeries}
+ 598:                 onAuthenticationRequired={
+ 599:                   handleAuthenticationRequired
+ 600:                 }
+ 601:                 onError={handleError}
+ 602:               />
+ 603:             </div>
+ 604: 
+ 605:             {showPreviewPanel && (
+ 606:               <PreviewPanel
+ 607:                 selection={selection}
+ 608:                 onAuthenticationRequired={
+ 609:                   handleAuthenticationRequired
+ 610:                 }
+ 611:                 onError={handleError}
+ 612:               />
+ 613:             )}
+ 614:           </div>
+ 615:         )}
+ 616: 
+ 617:         {showViewer && (
+ 618:           <div
+ 619:             style={{
+ 620:               flex: 1,
+ 621:               minWidth: 0,
+ 622:               minHeight: 0,
+ 623:             }}
+ 624:           >
+ 625:             <ViewerWorkspace
+ 626:               selection={selection}
+ 627:               adaptVolume={adaptVolume}
+ 628:               onAuthenticationRequired={
+ 629:                 handleAuthenticationRequired
+ 630:               }
+ 631:               onError={handleError}
+ 632:             />
+ 633:           </div>
+ 634:         )}
+ 635: 
+ 636:         {authenticated &&
+ 637:           !signingOut &&
+ 638:           page === "viewer" &&
+ 639:           !viewerAvailable && (
+ 640:             <div

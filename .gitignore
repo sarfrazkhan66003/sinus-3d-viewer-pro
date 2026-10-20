@@ -1,0 +1,66 @@
+# Environments
+.venv/
+.venv*/
+venv/
+ENV/
+env/
+**/.venv/
+**/.venv*/
+**/venv/
+**/env/
+
+# Dependencies
+node_modules/
+**/node_modules/
+
+# Build and dist outputs
+dist/
+**/dist/
+build/
+**/build/
+.next/
+out/
+*.tsbuildinfo
+
+# Python cache and compiled files
+__pycache__/
+**/__pycache__/
+*.py[cod]
+*$py.class
+*.pyd
+*.so
+*.egg-info/
+*.egg
+
+# Jupyter
+.ipynb_checkpoints/
+**/.ipynb_checkpoints/
+
+# Environment configurations
+.env
+.env.*
+!.env.example
+!**/.env.example
+
+# Runtime caches and temporary files
+sinus-viewer/runtime/cache/*
+sinus-viewer/runtime/logs/*
+sinus-viewer/runtime/temp/*
+!sinus-viewer/runtime/cache/.gitkeep
+!sinus-viewer/runtime/logs/.gitkeep
+!sinus-viewer/runtime/temp/.gitkeep
+
+# Large datasets / medical imaging binary files
+*.dcm
+*.dicom
+*.nii
+*.nii.gz
+*.zip
+*.tar.gz
+*.7z
+
+# Operating System & IDE
+.DS_Store
+Thumbs.db
+.vscode/
+.idea/

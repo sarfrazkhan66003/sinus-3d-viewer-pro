@@ -1,0 +1,1065 @@
+
+/**
+ * SINUS VIEWER — SECURE FRONTEND API CLIENT
+ * =========================================
+ *
+ * Central browser communication with the FastAPI backend.
+ *
+ * Features:
+ * - Same-origin API request restriction.
+ * - Browser-managed HttpOnly session cookies.
+ * - JSON size limits and runtime validators.
+ * - Request timeouts and optional cancellation.
+ * - Controlled API errors without sensitive details.
+ * - Dataset, patient, series and volume request methods.
+ * - Authenticated PNG preview fetching.
+ * - Bounded HTTP Range binary transfers.
+ *
+ * Security:
+ * - No localStorage or sessionStorage credentials.
+ * - No document.cookie access.
+ * - No raw request/response logging.
+ * - Never expose credentials or medical identifiers
+ *   inside error messages.
+ * - Server remains responsible for authorization.
+ *
+ * Python/Node dependencies are NOT installed by this file.
+ * No direct DICOM filesystem operations occur here.
+ */
+
+import {
+  getSafeAPIErrorMessage,
+  isAPIErrorResponse,
+  isDatasetSummary,
+  isHealthResponse,
+  isLoginResponse,
+  isOpaqueHandle,
+  isPatientSummary,
+  isSeriesSummary,
+  isSessionStatus,
+  isVolumeLevel,
+  isVolumeResponse,
+  type APIErrorResponse,
+  type DatasetCloseResponse,
+  type DatasetListResponse,
+  type DatasetResponse,
+  type DatasetSelectRequest,
+  type HealthResponse,
+  type LoginRequest,
+  type LoginResponse,
+  type LogoutResponse,
+  type PatientListResponse,
+  type PreviewResponse,
+  type PublicErrorCode,
+  type SeriesListResponse,
+  type SeriesValidationResponse,
+  type SessionStatus,
+  type StreamResponseHeaders,
+  type VolumeLevel,
+  type VolumeResponse,
+} from "../types/api";
+
+
+// ============================================================
+// 01 — CONSTANTS
+// ============================================================
+
+const API_PREFIX = "/api/";
+
+const DEFAULT_TIMEOUT_MS = 15000;
+const VOLUME_TIMEOUT_MS = 120000;
+
+const MAX_JSON_BYTES = 2 * 1024 * 1024;
+const MAX_PNG_BYTES = 8 * 1024 * 1024;
+const MAX_BINARY_BYTES = 64 * 1024 * 1024;
+
+const JSON_MIME = "application/json";
+const PNG_MIME = "image/png";
+const BINARY_MIME = "application/octet-stream";
+
+const REQUEST_HEADERS = {
+  Accept: JSON_MIME,
+} as const;
+
+
+// ============================================================
+// 02 — SAFE ERROR CLASS
+// ============================================================
+
+export type ClientErrorCode =
+  | PublicErrorCode
+  | "NETWORK_ERROR"
+  | "REQUEST_ABORTED"
+  | "INVALID_RESPONSE";
+
+export class APIClientError extends Error {
+  readonly code: ClientErrorCode;
+  readonly status: number | null;
+  readonly retryable: boolean;
+
+  constructor(
+    code: ClientErrorCode,
+    message: string,
+    status: number | null = null,
+    retryable = false,
+  ) {
+    super(message);
+    this.name = "APIClientError";
+    this.code = code;
+    this.status = status;
+    this.retryable = retryable;
+  }
+}
+
+function invalidResponse(): APIClientError {
+  return new APIClientError(
+    "INVALID_RESPONSE",
+    "The server returned an invalid response.",
+  );
+}
+
+function safeError(
+  status: number,
+  payload: unknown,
+): APIClientError {
+  if (isAPIErrorResponse(payload)) {
+    return new APIClientError(
+      payload.error.code,
+      getSafeAPIErrorMessage(payload.error.code),
+      status,
+      payload.error.retryable,
+    );
+  }
+
+  const fallback: PublicErrorCode =
+    status === 401 ? "AUTH_REQUIRED" :
+    status === 403 ? "ACCESS_DENIED" :
+    status === 404 ? "INVALID_REQUEST" :
+    status === 413 ? "REQUEST_TOO_LARGE" :
+    status === 416 ? "RANGE_NOT_SATISFIABLE" :
+    status === 429 ? "RATE_LIMITED" :
+    status === 503 ? "SERVICE_UNAVAILABLE" :
+    "PROCESSING_FAILED";
+
+  return new APIClientError(
+    fallback,
+    getSafeAPIErrorMessage(fallback),
+    status,
+    status === 429 || status === 503,
+  );
+}
+
+
+// ============================================================
+// 03 — LIGHTWEIGHT VALIDATION
+// ============================================================
+
+type Validator<T> = (value: unknown) => value is T;
+
+function isRecord(
+  value: unknown,
+): value is Record<string, unknown> {
+  return (
+    typeof value === "object" &&
+    value !== null &&
+    !Array.isArray(value)
+  );
+}
+
+function isSuccess(
+  value: unknown,
+): value is Record<string, unknown> & { success: true } {
+  return isRecord(value) && value.success === true;
+}
+
+function isDatasetResponse(
+  value: unknown,
+): value is DatasetResponse {
+  return (
+    isSuccess(value) &&
+    isDatasetSummary(value.dataset)
+  );
+}
+
+function isDatasetListResponse(
+  value: unknown,
+): value is DatasetListResponse {
+  return (
+    isSuccess(value) &&
+    Array.isArray(value.datasets) &&
+    value.datasets.length <= 100 &&
+    value.datasets.every(isDatasetSummary)
+  );
+}
+
+function isDatasetCloseResponse(
+  value: unknown,
+): value is DatasetCloseResponse {
+  return isSuccess(value) && value.closed === true;
+}
+
+function isPatientListResponse(
+  value: unknown,
+): value is PatientListResponse {
+  return (
+    isSuccess(value) &&
+    isOpaqueHandle(value.dataset_session_id) &&
+    Array.isArray(value.patients) &&
+    value.patients.length <= 100000 &&
+    value.patients.every(isPatientSummary)
+  );
+}
+
+function isSeriesListResponse(
+  value: unknown,
+): value is SeriesListResponse {
+  return (
+    isSuccess(value) &&
+    isOpaqueHandle(value.dataset_session_id) &&
+    isOpaqueHandle(value.patient_handle) &&
+    Array.isArray(value.series) &&
+    value.series.length <= 100000 &&
+    value.series.every(isSeriesSummary)
+  );
+}
+
+function isSeriesValidationResponse(
+  value: unknown,
+): value is SeriesValidationResponse {
+  return (
+    isSuccess(value) &&
+    isOpaqueHandle(value.series_handle) &&
+    typeof value.valid === "boolean" &&
+    typeof value.volume_ready === "boolean" &&
+    Number.isSafeInteger(value.file_count) &&
+    Number(value.file_count) >= 0 &&
+    Number.isSafeInteger(value.frame_count) &&
+    Number(value.frame_count) >= 0 &&
+    Array.isArray(value.issues) &&
+    value.issues.length <= 256 &&
+    value.issues.every(
+      (issue: unknown) =>
+        isRecord(issue) &&
+        typeof issue.code === "string" &&
+        /^[A-Z0-9_]{1,64}$/.test(issue.code) &&
+        (
+          issue.severity === "info" ||
+          issue.severity === "warning" ||
+          issue.severity === "error"
+        ),
+    )
+  );
+}
+
+function isPreviewResponse(
+  value: unknown,
+): value is PreviewResponse {
+  if (
+    !isSuccess(value) ||
+    !isOpaqueHandle(value.series_handle) ||
+    !isRecord(value.previews)
+  ) {
+    return false;
+  }
+
+  const previews = value.previews;
+
+  for (const plane of [
+    "axial",
+    "coronal",
+    "sagittal",
+  ] as const) {
+    const image = previews[plane];
+
+    if (
+      !isRecord(image) ||
+      image.plane !== plane ||
+      image.dtype !== "uint8" ||
+      !Array.isArray(image.shape_yx) ||
+      image.shape_yx.length !== 2 ||
+      !image.shape_yx.every(
+        (dimension: unknown) =>
+          Number.isSafeInteger(dimension) &&
+          Number(dimension) > 0,
+      ) ||
+      image.diagnostic_quality !== false
+    ) {
+      return false;
+    }
+  }
+
+  return previews.diagnostic_quality === false;
+}
+
+function isLogoutResponse(
+  value: unknown,
+): value is LogoutResponse {
+  return isSuccess(value) && value.authenticated === false;
+}
+
+
+// ============================================================
+// 04 — SAFE PATH BUILDING
+// ============================================================
+
+function apiPath(
+  path: string,
+): string {
+  if (
+    !path.startsWith(API_PREFIX) ||
+    path.includes("://") ||
+    path.includes("\\") ||
+    path.includes("?") ||
+    path.includes("#") ||
+    path.split("/").some(
+      (segment) => segment === "." || segment === "..",
+    ) ||
+    /[\u0000-\u001f\u007f]/.test(path)
+  ) {
+    throw new APIClientError(
+      "INVALID_RESPONSE",
+      "An invalid API endpoint was requested.",
+    );
+  }
+
+  return path;
+}
+
+function handlePath(value: string): string {
+  if (!isOpaqueHandle(value)) {
+    throw new APIClientError(
+      "INVALID_RESPONSE",
+      "An invalid resource identifier was provided.",
+    );
+  }
+
+  return encodeURIComponent(value);
+}
+
+
+// ============================================================
+// 05 — RESPONSE SIZE HANDLING
+// ============================================================
+
+async function readBoundedBytes(
+  response: Response,
+  maximumBytes: number,
+): Promise<Uint8Array> {
+  const declared = response.headers.get("Content-Length");
+
+  if (declared !== null) {
+    const size = Number(declared);
+
+    if (
+      !Number.isSafeInteger(size) ||
+      size < 0 ||
+      size > maximumBytes
+    ) {
+      throw invalidResponse();
+    }
+  }
+
+  const reader = response.body?.getReader();
+
+  if (!reader) {
+    throw invalidResponse();
+  }
+
+  const chunks: Uint8Array[] = [];
+  let total = 0;
+
+  try {
+    while (true) {
+      const result = await reader.read();
+
+      if (result.done) {
+        break;
+      }
+
+      total += result.value.byteLength;
+
+      if (total > maximumBytes) {
+        await reader.cancel();
+        throw invalidResponse();
+      }
+
+      chunks.push(result.value);
+    }
+  } finally {
+    reader.releaseLock();
+  }
+
+  if (
+    declared !== null &&
+    total !== Number(declared)
+  ) {
+    throw invalidResponse();
+  }
+
+  const output = new Uint8Array(total);
+  let offset = 0;
+
+  for (const chunk of chunks) {
+    output.set(chunk, offset);
+    offset += chunk.byteLength;
+  }
+
+  return output;
+}
+
+async function parseBoundedJSON(
+  response: Response,
+): Promise<unknown> {
+  const contentType =
+    response.headers.get("Content-Type") ?? "";
+
+  if (
+    !contentType.toLowerCase().startsWith(JSON_MIME)
+  ) {
+    throw invalidResponse();
+  }
+
+  const bytes = await readBoundedBytes(
+    response,
+    MAX_JSON_BYTES,
+  );
+
+  try {
+    return JSON.parse(
+      new TextDecoder("utf-8", {
+        fatal: true,
+      }).decode(bytes),
+    ) as unknown;
+  } catch {
+    throw invalidResponse();
+  }
+}
+
+
+// ============================================================
+// 06 — SECURE FETCH ENGINE
+// ============================================================
+
+interface RequestOptions {
+  readonly method?: "GET" | "POST" | "DELETE";
+  readonly body?: unknown;
+  readonly timeoutMs?: number;
+  readonly signal?: AbortSignal;
+  readonly headers?: Readonly<Record<string, string>>;
+}
+
+async function performRequest(
+  endpoint: string,
+  options: RequestOptions = {},
+): Promise<Response> {
+  const method = options.method ?? "GET";
+  const timeoutMs = options.timeoutMs ?? DEFAULT_TIMEOUT_MS;
+
+  if (
+    !Number.isSafeInteger(timeoutMs) ||
+    timeoutMs < 1000 ||
+    timeoutMs > 300000
+  ) {
+    throw new APIClientError(
+      "INVALID_RESPONSE",
+      "Invalid request timeout.",
+    );
+  }
+
+  const controller = new AbortController();
+
+  const abortFromCaller = () => controller.abort();
+
+  options.signal?.addEventListener(
+    "abort",
+    abortFromCaller,
+    { once: true },
+  );
+
+  if (options.signal?.aborted) {
+    controller.abort();
+  }
+
+  const timeout = globalThis.setTimeout(
+    () => controller.abort(),
+    timeoutMs,
+  );
+
+  try {
+    const headers: Record<string, string> = {
+      ...REQUEST_HEADERS,
+      ...options.headers,
+    };
+
+    let body: string | undefined;
+
+    if (options.body !== undefined) {
+      headers["Content-Type"] = JSON_MIME;
+      body = JSON.stringify(options.body);
+    }
+
+    const response = await fetch(
+      apiPath(endpoint),
+      {
+        method,
+        credentials: "include",
+        cache: "no-store",
+        redirect: "error",
+        mode: "same-origin",
+        referrerPolicy: "no-referrer",
+        headers,
+        body,
+        signal: controller.signal,
+      },
+    );
+
+    return response;
+  } catch {
+    if (controller.signal.aborted) {
+      throw new APIClientError(
+        "REQUEST_ABORTED",
+        "The request was cancelled or timed out.",
+      );
+    }
+
+    throw new APIClientError(
+      "NETWORK_ERROR",
+      "Unable to communicate with the server.",
+      null,
+      true,
+    );
+  } finally {
+    globalThis.clearTimeout(timeout);
+
+    options.signal?.removeEventListener(
+      "abort",
+      abortFromCaller,
+    );
+  }
+}
+
+
+// ============================================================
+// 07 — JSON API REQUEST ENGINE
+// ============================================================
+
+async function requestJSON<T>(
+  endpoint: string,
+  validator: Validator<T>,
+  options: RequestOptions = {},
+): Promise<T> {
+  const response = await performRequest(
+    endpoint,
+    options,
+  );
+
+  const payload = await parseBoundedJSON(response);
+
+  if (!response.ok) {
+    throw safeError(
+      response.status,
+      payload,
+    );
+  }
+
+  if (!validator(payload)) {
+    throw invalidResponse();
+  }
+
+  return payload;
+}
+
+
+// ============================================================
+// 08 — AUTHENTICATION
+// ============================================================
+
+export async function apiLogin(
+  credentials: LoginRequest,
+): Promise<LoginResponse> {
+  return requestJSON(
+    "/api/auth/login",
+    isLoginResponse,
+    {
+      method: "POST",
+      body: credentials,
+    },
+  );
+}
+
+export async function apiSession(): Promise<SessionStatus> {
+  return requestJSON(
+    "/api/auth/session",
+    isSessionStatus,
+  );
+}
+
+export async function apiLogout(): Promise<LogoutResponse> {
+  return requestJSON(
+    "/api/auth/logout",
+    isLogoutResponse,
+    {
+      method: "POST",
+    },
+  );
+}
+
+
+// ============================================================
+// 09 — DATASET OPERATIONS
+// ============================================================
+
+export async function apiSelectDataset(
+  payload: DatasetSelectRequest,
+): Promise<DatasetResponse> {
+  return requestJSON(
+    "/api/datasets",
+    isDatasetResponse,
+    {
+      method: "POST",
+      body: payload,
+      timeoutMs: VOLUME_TIMEOUT_MS,
+    },
+  );
+}
+
+export async function apiListDatasets(): Promise<DatasetListResponse> {
+  return requestJSON(
+    "/api/datasets",
+    isDatasetListResponse,
+  );
+}
+
+export async function apiGetDataset(
+  datasetSessionId: string,
+): Promise<DatasetResponse> {
+  return requestJSON(
+    `/api/datasets/${handlePath(datasetSessionId)}`,
+    isDatasetResponse,
+  );
+}
+
+export async function apiRefreshDataset(
+  datasetSessionId: string,
+): Promise<DatasetResponse> {
+  return requestJSON(
+    `/api/datasets/${handlePath(datasetSessionId)}/refresh`,
+    isDatasetResponse,
+    {
+      method: "POST",
+      timeoutMs: VOLUME_TIMEOUT_MS,
+    },
+  );
+}
+
+export async function apiCloseDataset(
+  datasetSessionId: string,
+): Promise<DatasetCloseResponse> {
+  return requestJSON(
+    `/api/datasets/${handlePath(datasetSessionId)}`,
+    isDatasetCloseResponse,
+    {
+      method: "DELETE",
+    },
+  );
+}
+
+
+// ============================================================
+// 10 — PATIENT AND SERIES BROWSER
+// ============================================================
+
+export async function apiListPatients(
+  datasetSessionId: string,
+): Promise<PatientListResponse> {
+  return requestJSON(
+    `/api/datasets/${handlePath(datasetSessionId)}/patients`,
+    isPatientListResponse,
+    {
+      timeoutMs: VOLUME_TIMEOUT_MS,
+    },
+  );
+}
+
+export async function apiListSeries(
+  datasetSessionId: string,
+  patientHandle: string,
+): Promise<SeriesListResponse> {
+  return requestJSON(
+    `/api/datasets/${handlePath(datasetSessionId)}` +
+      `/patients/${handlePath(patientHandle)}/series`,
+    isSeriesListResponse,
+  );
+}
+
+export async function apiValidateSeries(
+  datasetSessionId: string,
+  seriesHandle: string,
+): Promise<SeriesValidationResponse> {
+  return requestJSON(
+    `/api/datasets/${handlePath(datasetSessionId)}` +
+      `/series/${handlePath(seriesHandle)}/validation`,
+    isSeriesValidationResponse,
+  );
+}
+
+
+// ============================================================
+// 11 — VOLUME DESCRIPTORS
+// ============================================================
+
+export async function apiLoadVolume(
+  datasetSessionId: string,
+  seriesHandle: string,
+): Promise<VolumeResponse> {
+  return requestJSON(
+    `/api/volumes/${handlePath(datasetSessionId)}` +
+      `/${handlePath(seriesHandle)}/load`,
+    isVolumeResponse,
+    {
+      method: "POST",
+      timeoutMs: VOLUME_TIMEOUT_MS,
+    },
+  );
+}
+
+export async function apiGetVolume(
+  datasetSessionId: string,
+  seriesHandle: string,
+): Promise<VolumeResponse> {
+  return requestJSON(
+    `/api/volumes/${handlePath(datasetSessionId)}` +
+      `/${handlePath(seriesHandle)}`,
+    isVolumeResponse,
+    {
+      timeoutMs: VOLUME_TIMEOUT_MS,
+    },
+  );
+}
+
+export async function apiGetVolumeLevel(
+  datasetSessionId: string,
+  seriesHandle: string,
+  level: number,
+): Promise<VolumeLevel> {
+  if (
+    !Number.isSafeInteger(level) ||
+    level < 0 ||
+    level > 64
+  ) {
+    throw invalidResponse();
+  }
+
+  return requestJSON(
+    `/api/volumes/${handlePath(datasetSessionId)}` +
+      `/${handlePath(seriesHandle)}/levels/${level}`,
+    isVolumeLevel,
+  );
+}
+
+
+// ============================================================
+// 12 — PREVIEW METADATA
+// ============================================================
+
+export async function apiGetPreviews(
+  datasetSessionId: string,
+  seriesHandle: string,
+): Promise<PreviewResponse> {
+  return requestJSON(
+    `/api/previews/${handlePath(datasetSessionId)}` +
+      `/${handlePath(seriesHandle)}`,
+    isPreviewResponse,
+    {
+      timeoutMs: VOLUME_TIMEOUT_MS,
+    },
+  );
+}
+
+
+// ============================================================
+// 13 — BINARY AND PNG HELPERS
+// ============================================================
+
+async function requestBytes(
+  endpoint: string,
+  {
+  mimeType,
+  maximumBytes,
+  headers,
+  signal,
+  timeoutMs,
+}: {
+  mimeType: string;
+  maximumBytes: number;
+  headers?: Readonly<Record<string, string>>;
+  signal?: AbortSignal;
+  timeoutMs?: number;
+}): Promise<{
+  bytes: Uint8Array;
+  response: Response;
+}> {
+  const response = await performRequest(
+    endpoint,
+    {
+      headers: {
+        Accept: mimeType,
+        ...headers,
+      },
+      signal,
+      timeoutMs,
+    },
+  );
+
+  if (!response.ok) {
+    let payload: unknown = null;
+
+    try {
+      payload = await parseBoundedJSON(response);
+    } catch {
+      // No raw server response is exposed to the caller.
+    }
+
+    throw safeError(response.status, payload);
+  }
+
+  const receivedType =
+    response.headers.get("Content-Type") ?? "";
+
+  if (
+    !receivedType.toLowerCase().startsWith(mimeType)
+  ) {
+    throw invalidResponse();
+  }
+
+  const bytes = await readBoundedBytes(
+    response,
+    maximumBytes,
+  );
+
+  return {
+    bytes,
+    response,
+  };
+}
+
+
+// ============================================================
+// 14 — AUTHENTICATED PNG PREVIEW
+// ============================================================
+
+export async function apiGetPreviewPNG(
+  datasetSessionId: string,
+  seriesHandle: string,
+  plane: "axial" | "coronal" | "sagittal",
+  signal?: AbortSignal,
+): Promise<Blob> {
+  if (
+    plane !== "axial" &&
+    plane !== "coronal" &&
+    plane !== "sagittal"
+  ) {
+    throw invalidResponse();
+  }
+
+  const endpoint =
+    `/api/previews/${handlePath(datasetSessionId)}` +
+    `/${handlePath(seriesHandle)}/${plane}.png`;
+
+  const { bytes } = await requestBytes(
+    endpoint,
+    {
+      mimeType: PNG_MIME,
+      maximumBytes: MAX_PNG_BYTES,
+      signal,
+      timeoutMs: VOLUME_TIMEOUT_MS,
+    },
+  );
+
+  const pngSignature = [
+    137, 80, 78, 71, 13, 10, 26, 10,
+  ];
+
+  if (
+    bytes.length < pngSignature.length ||
+    !pngSignature.every(
+      (value, index) => bytes[index] === value,
+    )
+  ) {
+    throw invalidResponse();
+  }
+
+  const copy = new Uint8Array(bytes.byteLength);
+  copy.set(bytes);
+
+  return new Blob(
+    [copy],
+    {
+      type: PNG_MIME,
+    },
+  );
+}
+
+
+// ============================================================
+// 15 — HTTP BYTE RANGE FETCH
+// ============================================================
+
+export interface BinaryRangeResult {
+  readonly bytes: Uint8Array;
+  readonly headers: StreamResponseHeaders;
+  readonly status: 206;
+}
+
+export async function apiGetVolumeRange(
+  datasetSessionId: string,
+  seriesHandle: string,
+  level: number,
+  offset: number,
+  length: number,
+  signal?: AbortSignal,
+): Promise<BinaryRangeResult> {
+  if (
+    !Number.isSafeInteger(level) ||
+    level < 0 ||
+    level > 64 ||
+    !Number.isSafeInteger(offset) ||
+    offset < 0 ||
+    !Number.isSafeInteger(length) ||
+    length < 1 ||
+    length > MAX_BINARY_BYTES
+  ) {
+    throw invalidResponse();
+  }
+
+  const end = offset + length - 1;
+
+  if (!Number.isSafeInteger(end)) {
+    throw invalidResponse();
+  }
+
+  const endpoint =
+    `/api/streaming/${handlePath(datasetSessionId)}` +
+    `/${handlePath(seriesHandle)}` +
+    `/levels/${level}/bytes`;
+
+  const { bytes, response } = await requestBytes(
+    endpoint,
+    {
+      mimeType: BINARY_MIME,
+      maximumBytes: MAX_BINARY_BYTES,
+      signal,
+      timeoutMs: VOLUME_TIMEOUT_MS,
+      headers: {
+        Range: `bytes=${offset}-${end}`,
+      },
+    },
+  );
+
+  if (
+    response.status !== 206 ||
+    bytes.length !== length
+  ) {
+    throw invalidResponse();
+  }
+
+  const contentRange =
+    response.headers.get("Content-Range");
+
+  if (contentRange === null) {
+    throw invalidResponse();
+  }
+
+  const rangeMatch =
+    /^bytes ([0-9]+)-([0-9]+)\/([0-9]+)$/.exec(
+      contentRange,
+    );
+
+  if (!rangeMatch) {
+    throw invalidResponse();
+  }
+
+  const responseStart = Number(rangeMatch[1]);
+  const responseEnd = Number(rangeMatch[2]);
+  const totalBytes = Number(rangeMatch[3]);
+
+  if (
+    !Number.isSafeInteger(totalBytes) ||
+    !Number.isSafeInteger(responseStart) ||
+    !Number.isSafeInteger(responseEnd) ||
+    responseStart !== offset ||
+    responseEnd !== end ||
+    totalBytes <= end
+  ) {
+    throw invalidResponse();
+  }
+
+  return {
+    bytes,
+    status: 206,
+    headers: {
+      contentLength: bytes.byteLength,
+      contentRange,
+      acceptRanges: response.headers.get("Accept-Ranges"),
+      contentType: BINARY_MIME,
+    },
+  };
+}
+
+
+// ============================================================
+// 16 — PUBLIC HEALTH CHECK
+// ============================================================
+
+export async function apiHealth(): Promise<HealthResponse> {
+  const response = await performRequest("/api/health");
+
+  const payload = await parseBoundedJSON(response);
+
+  // A degraded backend may legitimately return HTTP 503.
+  if (
+    (response.status === 200 || response.status === 503) &&
+    isHealthResponse(payload)
+  ) {
+    return payload;
+  }
+
+  if (!response.ok) {
+    throw safeError(response.status, payload);
+  }
+
+  throw invalidResponse();
+}
+
+
+// ============================================================
+// 17 — ERROR HELPERS
+// ============================================================
+
+export function isAuthenticationFailure(
+  error: unknown,
+): boolean {
+  return (
+    error instanceof APIClientError &&
+    (
+      error.status === 401 ||
+      error.code === "AUTH_REQUIRED" ||
+      error.code === "SESSION_EXPIRED"
+    )
+  );
+}
+
+export function getPublicErrorText(
+  error: unknown,
+): string {
+  if (error instanceof APIClientError) {
+    return error.message;
+  }
+
+  return "The operation could not be completed.";
+}
+
+
+// ============================================================
+// END OF SINUS VIEWER API CLIENT
+// ============================================================

@@ -1,0 +1,236 @@
+
+<!doctype html>
+<html lang="en" class="dark">
+  <head>
+    <!-- =====================================================
+         SINUS VIEWER — APPLICATION HTML ENTRY POINT
+         React + TypeScript + Vite
+         ===================================================== -->
+
+    <meta charset="UTF-8" />
+
+    <meta
+      name="viewport"
+      content="width=device-width, initial-scale=1.0, viewport-fit=cover"
+    />
+
+    <meta
+      name="theme-color"
+      content="#101722"
+    />
+
+    <meta
+      name="color-scheme"
+      content="dark"
+    />
+
+    <meta
+      name="description"
+      content="Sinus Viewer — browser-based DICOM, CBCT and CT medical imaging workstation."
+    />
+
+    <meta
+      name="application-name"
+      content="Sinus Viewer"
+    />
+
+    <meta name="referrer" content="same-origin" />
+
+    <!-- Search indexing disabled for the application shell.
+         Access control is enforced by the backend, not robots. -->
+    <meta name="robots" content="noindex, nofollow, noarchive" />
+
+    <!-- Browser favicon, embedded to avoid an extra network request. -->
+    <link
+      rel="icon"
+      type="image/svg+xml"
+      href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64'%3E%3Crect width='64' height='64' rx='14' fill='%23101722'/%3E%3Cpath d='M16 32h9l5-12 7 24 5-12h6' fill='none' stroke='%2348C6D5' stroke-width='4' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E"
+    />
+
+    <!-- Security headers such as CSP, HSTS and frame restrictions
+         will be configured by the production backend/proxy.
+         HTML metadata alone is not an access-control mechanism. -->
+
+    <title>Sinus Viewer | Medical Imaging Workstation</title>
+
+    <style>
+      /*
+       * Minimal initial loading shell.
+       * The complete design system loads from React/CSS.
+       */
+
+      :root {
+        color-scheme: dark;
+        background: #101722;
+        color: #edf3f9;
+        font-family:
+          Inter,
+          "Segoe UI",
+          Arial,
+          sans-serif;
+        font-synthesis: none;
+      }
+
+      *,
+      *::before,
+      *::after {
+        box-sizing: border-box;
+      }
+
+      html,
+      body,
+      #root {
+        width: 100%;
+        min-width: 320px;
+        min-height: 100%;
+        margin: 0;
+      }
+
+      body {
+        min-height: 100dvh;
+        background: #101722;
+      }
+
+      #root {
+        min-height: 100dvh;
+        isolation: isolate;
+      }
+
+      #app-boot {
+        display: flex;
+        min-height: 100dvh;
+        align-items: center;
+        justify-content: center;
+        padding: 24px;
+      }
+
+      .boot-card {
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        gap: 18px;
+        width: min(100%, 360px);
+        text-align: center;
+      }
+
+      .boot-logo {
+        display: grid;
+        width: 72px;
+        height: 72px;
+        place-items: center;
+        border: 1px solid #354051;
+        border-radius: 20px;
+        background: #172233;
+      }
+
+      .boot-logo svg {
+        width: 40px;
+        height: 40px;
+      }
+
+      .boot-title {
+        margin: 0;
+        color: #edf3f9;
+        font-size: 21px;
+        font-weight: 700;
+        letter-spacing: 0.08em;
+      }
+
+      .boot-subtitle {
+        margin: 0;
+        color: #9daabf;
+        font-size: 13px;
+        line-height: 1.6;
+      }
+
+      .boot-progress {
+        overflow: hidden;
+        width: 180px;
+        height: 3px;
+        border-radius: 999px;
+        background: #26364a;
+      }
+
+      .boot-progress::after {
+        display: block;
+        width: 35%;
+        height: 100%;
+        border-radius: inherit;
+        background: #48c6d5;
+        content: "";
+        animation: boot-slide 1.4s ease-in-out infinite alternate;
+      }
+
+      @keyframes boot-slide {
+        from {
+          transform: translateX(0);
+        }
+        to {
+          transform: translateX(185%);
+        }
+      }
+
+      @media (prefers-reduced-motion: reduce) {
+        .boot-progress::after {
+          animation: none;
+          width: 100%;
+        }
+      }
+    </style>
+  </head>
+
+  <body>
+    <!-- React mounts inside this element. -->
+    <div id="root">
+      <div id="app-boot" role="status" aria-live="polite">
+        <div class="boot-card">
+          <div class="boot-logo" aria-hidden="true">
+            <svg
+              xmlns="http://www.w3.org/2000/svg"
+              viewBox="0 0 64 64"
+              fill="none"
+            >
+              <path
+                d="M8 32H21L28 15L39 49L46 32H56"
+                stroke="#48C6D5"
+                stroke-width="4"
+                stroke-linecap="round"
+                stroke-linejoin="round"
+              />
+            </svg>
+          </div>
+
+          <h1 class="boot-title">SINUS VIEWER</h1>
+
+          <p class="boot-subtitle">
+            Initializing medical imaging workspace
+          </p>
+
+          <div class="boot-progress" aria-hidden="true"></div>
+        </div>
+      </div>
+    </div>
+
+    <noscript>
+      <div
+        style="
+          padding: 32px;
+          text-align: center;
+          color: #edf3f9;
+          background: #101722;
+          font-family: Arial, sans-serif;
+        "
+      >
+        <h2>JavaScript Required</h2>
+        <p>
+          Sinus Viewer requires JavaScript and a compatible
+          WebGL-enabled browser to run its medical imaging tools.
+        </p>
+      </div>
+    </noscript>
+
+    <!-- Vite loads the TypeScript React entry point.
+         Production builds replace this with compiled assets. -->
+    <script type="module" src="/src/main.tsx"></script>
+  </body>
+</html>

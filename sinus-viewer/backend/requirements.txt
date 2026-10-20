@@ -1,0 +1,135 @@
+
+# ============================================================
+# SINUS VIEWER — BACKEND DEPENDENCIES
+# Version: 0.1.0
+#
+# Recommended development Python: 3.11
+# Target: Windows development + Google Colab Linux runtime
+# Medical imaging: CBCT / CT / DICOM
+# ============================================================
+
+
+# ============================================================
+# 01 — API SERVER
+# ============================================================
+
+fastapi>=0.115,<1.0
+uvicorn[standard]>=0.30,<1.0
+starlette>=0.40,<1.0
+
+# Configuration and request validation
+pydantic>=2.9,<3.0
+pydantic-settings>=2.5,<3.0
+
+# Multipart requests
+python-multipart>=0.0.12,<1.0
+
+
+# ============================================================
+# 02 — DICOM READING AND METADATA
+# ============================================================
+
+pydicom>=3.0,<4.0
+
+# JPEG 2000 and RLE decoding
+pylibjpeg>=2.0,<3.0
+pylibjpeg-openjpeg>=2.0,<3.0
+pylibjpeg-rle>=2.0,<3.0
+
+# JPEG-LS decoder
+pyjpegls>=1.5,<2.0
+
+# Standard image handling
+Pillow>=11.0,<13.0
+
+
+# ============================================================
+# 03 — MEDICAL IMAGE PROCESSING
+# ============================================================
+
+SimpleITK>=2.4,<3.0
+numpy>=2.0,<3.0
+scipy>=1.14,<2.0
+
+# Image processing and resampling
+scikit-image>=0.25,<1.0
+
+
+# ============================================================
+# 04 — VOLUME AND 3D PROCESSING
+# ============================================================
+
+# VTK Python for optional backend volume operations
+vtk>=9.3,<10.0
+
+# Mesh and geometry operations
+trimesh>=4.4,<5.0
+
+
+# ============================================================
+# 05 — ASYNC OPERATIONS / PERFORMANCE
+# ============================================================
+
+aiofiles>=24.1,<26.0
+anyio>=4.6,<5.0
+orjson>=3.10,<4.0
+
+# Cache
+cachetools>=5.5,<7.0
+
+# System resource monitoring
+psutil>=6.0,<9.0
+
+# Progress handling
+tqdm>=4.66,<5.0
+
+
+# ============================================================
+# 06 — SECURITY
+# ============================================================
+
+# Password hashing and verification
+argon2-cffi>=23.1,<26.0
+
+# Cryptographic utilities
+cryptography>=43.0,<47.0
+
+
+# ============================================================
+# 07 — CONFIGURATION / UTILITIES
+# ============================================================
+
+PyYAML>=6.0,<7.0
+python-dotenv>=1.0,<2.0
+
+# HTTP client
+httpx>=0.27,<1.0
+
+# Application logging
+loguru>=0.7,<1.0
+
+
+# ============================================================
+# 08 — TESTING
+# ============================================================
+
+pytest>=8.0,<10.0
+pytest-asyncio>=0.24,<2.0
+
+
+# ============================================================
+# 09 — IMPORTANT NOTES
+# ============================================================
+
+# Cornerstone3D runs in the frontend browser.
+# React / TypeScript dependencies are managed by npm.
+#
+# CUDA / PyTorch / CuPy are intentionally not installed here.
+# GPU-specific packages will be selected separately by the
+# Colab hardware-aware launcher when genuinely required.
+#
+# Extra proprietary or optional DICOM codecs must be tested
+# with real anonymized samples before enabling them.
+#
+# Original medical datasets must remain strictly read-only.
+# ============================================================

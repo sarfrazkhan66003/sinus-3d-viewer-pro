@@ -1,0 +1,971 @@
+
+/**
+ * SINUS VIEWER — WINDOW / LEVEL UTILITIES
+ * ======================================
+ *
+ * Pure TypeScript intensity mapping for CT / CBCT:
+ * - Window center and window width.
+ * - DICOM-style linear grayscale mapping.
+ * - Brightness and contrast adjustments.
+ * - Automatic display range estimation.
+ * - Percentile-based window selection.
+ * - Uint8 grayscale and RGBA conversion.
+ * - NaN / Infinity / degenerate range handling.
+ * - Inverted grayscale presentation.
+ *
+ * Important:
+ * CBCT values are not assumed to be calibrated HU.
+ * These functions do not perform modality rescaling.
+ * Voxel data must already contain correctly decoded
+ * physical / source intensity values.
+ *
+ * These are display utilities, NOT diagnostic
+ * calibration or image-quality certification.
+ *
+ * This module performs no filesystem, HTTP,
+ * storage, or original DICOM modification.
+ */
+
+
+// ============================================================
+// 01 — CONSTANTS
+// ============================================================
+
+export const DEFAULT_WINDOW_CENTER = 0;
+export const DEFAULT_WINDOW_WIDTH = 400;
+
+export const DEFAULT_AUTO_LOW_PERCENTILE = 1;
+export const DEFAULT_AUTO_HIGH_PERCENTILE = 99;
+
+export const DEFAULT_AUTO_SAMPLE_LIMIT = 100000;
+
+export const MAX_AUTO_SAMPLE_LIMIT = 1000000;
+
+export const MIN_WINDOW_WIDTH = 1;
+export const MAX_WINDOW_WIDTH = 1000000000;
+
+export const MIN_BRIGHTNESS = -1;
+export const MAX_BRIGHTNESS = 1;
+
+export const MIN_CONTRAST = 0.1;
+export const MAX_CONTRAST = 5;
+
+const UINT8_MAX = 255;
+
+
+// ============================================================
+// 02 — PUBLIC TYPES
+// ============================================================
+
+export interface WindowLevel {
+  readonly center: number;
+  readonly width: number;
+}
+
+export interface DisplayAdjustments {
+  /**
+   * Brightness offset in normalized intensity units:
+   * -1 = darkest offset
+   *  0 = unchanged
+   * +1 = brightest offset
+   */
+  readonly brightness: number;
+
+  /**
+   * Contrast multiplier applied around 0.5:
+   * 1 = unchanged
+   */
+  readonly contrast: number;
+
+  readonly invert: boolean;
+}
+
+export interface IntensityStatistics {
+  readonly minimum: number;
+  readonly maximum: number;
+  readonly mean: number;
+  readonly finiteCount: number;
+  readonly sampledCount: number;
+}
+
+export interface AutoWindowOptions {
+  readonly lowPercentile?: number;
+  readonly highPercentile?: number;
+  readonly sampleLimit?: number;
+  readonly minimumWidth?: number;
+}
+
+export interface RenderOptions {
+  readonly window: WindowLevel;
+  readonly adjustments?: Partial<DisplayAdjustments>;
+  readonly invalidPixelValue?: number;
+}
+
+export interface GrayscaleImage {
+  readonly width: number;
+  readonly height: number;
+  readonly pixels: Uint8ClampedArray;
+}
+
+export interface RGBAImage {
+  readonly width: number;
+  readonly height: number;
+  readonly pixels: Uint8ClampedArray;
+}
+
+export class WindowLevelError extends Error {
+  constructor(
+    message = "Invalid window/level configuration.",
+  ) {
+    super(message);
+    this.name = "WindowLevelError";
+  }
+}
+
+
+// ============================================================
+// 03 — SHARED NUMERIC HELPERS
+// ============================================================
+
+function isFiniteNumber(
+  value: unknown,
+): value is number {
+  return (
+    typeof value === "number" &&
+    Number.isFinite(value)
+  );
+}
+
+function isPositiveInteger(
+  value: unknown,
+): value is number {
+  return (
+    typeof value === "number" &&
+    Number.isSafeInteger(value) &&
+    value > 0
+  );
+}
+
+function clampNumber(
+  value: number,
+  minimum: number,
+  maximum: number,
+): number {
+  return Math.min(
+    maximum,
+    Math.max(minimum, value),
+  );
+}
+
+function clamp01(value: number): number {
+  return clampNumber(value, 0, 1);
+}
+
+function byteValue(value: number): number {
+  if (!isFiniteNumber(value)) {
+    throw new WindowLevelError(
+      "Invalid grayscale fill value.",
+    );
+  }
+
+  return Math.round(
+    clampNumber(value, 0, UINT8_MAX),
+  );
+}
+
+function validateImageSize(
+  width: number,
+  height: number,
+  inputLength: number,
+  channels: 1 | 4,
+): void {
+  if (
+    !isPositiveInteger(width) ||
+    !isPositiveInteger(height) ||
+    !Number.isSafeInteger(inputLength) ||
+    inputLength < 0
+  ) {
+    throw new WindowLevelError(
+      "Invalid image dimensions.",
+    );
+  }
+
+  const count = width * height;
+  const outputLength = count * channels;
+
+  if (
+    !Number.isSafeInteger(count) ||
+    !Number.isSafeInteger(outputLength) ||
+    count !== inputLength
+  ) {
+    throw new WindowLevelError(
+      "Image dimensions do not match voxel count.",
+    );
+  }
+}
+
+function ensureIntensities(
+  values: Float32Array | Float64Array,
+): void {
+  if (
+    !(values instanceof Float32Array) &&
+    !(values instanceof Float64Array)
+  ) {
+    throw new WindowLevelError(
+      "Expected a floating-point intensity array.",
+    );
+  }
+}
+
+
+// ============================================================
+// 04 — WINDOW VALIDATION
+// ============================================================
+
+export function validateWindowLevel(
+  window: WindowLevel,
+): void {
+  if (
+    !window ||
+    !isFiniteNumber(window.center) ||
+    !isFiniteNumber(window.width) ||
+    window.width < MIN_WINDOW_WIDTH ||
+    window.width > MAX_WINDOW_WIDTH
+  ) {
+    throw new WindowLevelError();
+  }
+}
+
+export function createWindowLevel(
+  center: number,
+  width: number,
+): WindowLevel {
+  const result: WindowLevel = {
+    center,
+    width,
+  };
+
+  validateWindowLevel(result);
+  return result;
+}
+
+export function windowLevelFromRange(
+  minimum: number,
+  maximum: number,
+): WindowLevel {
+  if (
+    !isFiniteNumber(minimum) ||
+    !isFiniteNumber(maximum) ||
+    maximum < minimum
+  ) {
+    throw new WindowLevelError(
+      "Invalid display intensity range.",
+    );
+  }
+
+  const center = minimum / 2 + maximum / 2;
+
+  if (!isFiniteNumber(center)) {
+    throw new WindowLevelError(
+      "Display center exceeds numeric limits.",
+    );
+  }
+
+  const width = Math.max(
+    MIN_WINDOW_WIDTH,
+    maximum - minimum,
+  );
+
+  return createWindowLevel(center, width);
+}
+
+
+// ============================================================
+// 05 — DISPLAY ADJUSTMENTS
+// ============================================================
+
+export function normalizeAdjustments(
+  options: Partial<DisplayAdjustments> = {},
+): DisplayAdjustments {
+  const brightness = options.brightness ?? 0;
+  const contrast = options.contrast ?? 1;
+  const invert = options.invert ?? false;
+
+  if (
+    !isFiniteNumber(brightness) ||
+    brightness < MIN_BRIGHTNESS ||
+    brightness > MAX_BRIGHTNESS ||
+    !isFiniteNumber(contrast) ||
+    contrast < MIN_CONTRAST ||
+    contrast > MAX_CONTRAST ||
+    typeof invert !== "boolean"
+  ) {
+    throw new WindowLevelError(
+      "Invalid brightness or contrast settings.",
+    );
+  }
+
+  return {
+    brightness,
+    contrast,
+    invert,
+  };
+}
+
+export function adjustBrightness(
+  adjustments: DisplayAdjustments,
+  brightness: number,
+): DisplayAdjustments {
+  return normalizeAdjustments({
+    ...adjustments,
+    brightness,
+  });
+}
+
+export function adjustContrast(
+  adjustments: DisplayAdjustments,
+  contrast: number,
+): DisplayAdjustments {
+  return normalizeAdjustments({
+    ...adjustments,
+    contrast,
+  });
+}
+
+
+// ============================================================
+// 06 — DICOM-STYLE LINEAR WINDOW MAPPING
+// ============================================================
+
+/**
+ * Implements the DICOM LINEAR VOI window convention.
+ *
+ * For width = 1:
+ *   x <= center - 0.5 -> black
+ *   x >  center - 0.5 -> white
+ *
+ * For width > 1:
+ *   lower = center - 0.5 - (width - 1)/2
+ *   upper = center - 0.5 + (width - 1)/2
+ *
+ * The output is normalized to [0, 1].
+ *
+ * Does not implement LINEAR_EXACT, SIGMOID VOI,
+ * presentation LUTs or modality rescale transforms.
+ */
+export function intensityToNormalized(
+  intensity: number,
+  window: WindowLevel,
+): number {
+  validateWindowLevel(window);
+
+  if (!isFiniteNumber(intensity)) {
+    return 0;
+  }
+
+  const center = window.center;
+  const width = window.width;
+  const adjustedCenter = center - 0.5;
+
+  if (width === 1) {
+    return intensity <= adjustedCenter ? 0 : 1;
+  }
+
+  const halfRange = (width - 1) / 2;
+  const lower = adjustedCenter - halfRange;
+  const upper = adjustedCenter + halfRange;
+
+  if (intensity <= lower) {
+    return 0;
+  }
+
+  if (intensity > upper) {
+    return 1;
+  }
+
+  return clamp01(
+    (intensity - adjustedCenter) /
+      (width - 1) + 0.5,
+  );
+}
+
+function applyAdjustments(
+  normalized: number,
+  adjustments: DisplayAdjustments,
+): number {
+  let value = (
+    (normalized - 0.5) * adjustments.contrast +
+    0.5 +
+    adjustments.brightness
+  );
+
+  value = clamp01(value);
+
+  return adjustments.invert
+    ? 1 - value
+    : value;
+}
+
+function mapPreparedIntensity(
+  intensity: number,
+  window: WindowLevel,
+  adjustments: DisplayAdjustments,
+  invalidPixel: number,
+): number {
+  if (!isFiniteNumber(intensity)) {
+    return invalidPixel;
+  }
+
+  const normalized = intensityToNormalized(
+    intensity,
+    window,
+  );
+
+  return Math.round(
+    applyAdjustments(
+      normalized,
+      adjustments,
+    ) * UINT8_MAX,
+  );
+}
+
+export function intensityToUint8(
+  intensity: number,
+  window: WindowLevel,
+  options: Partial<DisplayAdjustments> = {},
+): number {
+  validateWindowLevel(window);
+
+  const adjustments = normalizeAdjustments(options);
+
+  return mapPreparedIntensity(
+    intensity,
+    window,
+    adjustments,
+    0,
+  );
+}
+
+
+// ============================================================
+// 07 — WINDOW POSITION AND WIDTH CONTROLS
+// ============================================================
+
+export function shiftWindowCenter(
+  window: WindowLevel,
+  delta: number,
+): WindowLevel {
+  validateWindowLevel(window);
+
+  if (!isFiniteNumber(delta)) {
+    throw new WindowLevelError(
+      "Invalid window center adjustment.",
+    );
+  }
+
+  return createWindowLevel(
+    window.center + delta,
+    window.width,
+  );
+}
+
+export function scaleWindowWidth(
+  window: WindowLevel,
+  scale: number,
+): WindowLevel {
+  validateWindowLevel(window);
+
+  if (
+    !isFiniteNumber(scale) ||
+    scale <= 0
+  ) {
+    throw new WindowLevelError(
+      "Invalid window width adjustment.",
+    );
+  }
+
+  const scaled = window.width * scale;
+
+  if (!isFiniteNumber(scaled)) {
+    throw new WindowLevelError(
+      "Window width exceeds numeric limits.",
+    );
+  }
+
+  return createWindowLevel(
+    window.center,
+    clampNumber(
+      scaled,
+      MIN_WINDOW_WIDTH,
+      MAX_WINDOW_WIDTH,
+    ),
+  );
+}
+
+
+// ============================================================
+// 08 — DETERMINISTIC INTENSITY SAMPLING
+// ============================================================
+
+/**
+ * Bounded sampling to avoid sorting an entire volume.
+ *
+ * Sampling is deterministic and never mutates input.
+ * Sampling a regular stride may underrepresent small
+ * findings; this is for display auto-windowing only.
+ */
+export function sampleFiniteIntensities(
+  values: Float32Array | Float64Array,
+  sampleLimit = DEFAULT_AUTO_SAMPLE_LIMIT,
+): Float64Array {
+  ensureIntensities(values);
+
+  if (
+    !isPositiveInteger(sampleLimit) ||
+    sampleLimit > MAX_AUTO_SAMPLE_LIMIT
+  ) {
+    throw new WindowLevelError(
+      "Invalid sampling limit.",
+    );
+  }
+
+  if (values.length === 0) {
+    return new Float64Array(0);
+  }
+
+  const count = Math.min(
+    sampleLimit,
+    values.length,
+  );
+
+  const sample: number[] = [];
+
+  for (let index = 0; index < count; index++) {
+    const sourceIndex = count === 1
+      ? Math.floor((values.length - 1) / 2)
+      : Math.floor(
+          index * (values.length - 1) / (count - 1),
+        );
+
+    const value = values[sourceIndex];
+
+    if (Number.isFinite(value)) {
+      sample.push(value);
+    }
+  }
+
+  return Float64Array.from(sample);
+}
+
+
+// ============================================================
+// 09 — INTENSITY STATISTICS
+// ============================================================
+
+export function getIntensityStatistics(
+  values: Float32Array | Float64Array,
+  sampleLimit = DEFAULT_AUTO_SAMPLE_LIMIT,
+): IntensityStatistics | null {
+  const sampled = sampleFiniteIntensities(
+    values,
+    sampleLimit,
+  );
+
+  if (sampled.length === 0) {
+    return null;
+  }
+
+  let minimum = Infinity;
+  let maximum = -Infinity;
+  let mean = 0;
+
+  // Incremental mean avoids a large sum overflow.
+  for (let index = 0; index < sampled.length; index++) {
+    const value = sampled[index];
+
+    minimum = Math.min(minimum, value);
+    maximum = Math.max(maximum, value);
+
+    mean += (
+      value - mean
+    ) / (index + 1);
+  }
+
+  return {
+    minimum,
+    maximum,
+    mean,
+    finiteCount: sampled.length,
+    sampledCount: sampled.length,
+  };
+}
+
+
+// ============================================================
+// 10 — PERCENTILE ESTIMATION
+// ============================================================
+
+export function estimatePercentile(
+  values: Float64Array,
+  percentile: number,
+): number {
+  if (
+    !(values instanceof Float64Array) ||
+    values.length === 0 ||
+    !isFiniteNumber(percentile) ||
+    percentile < 0 ||
+    percentile > 100
+  ) {
+    throw new WindowLevelError(
+      "Invalid percentile request.",
+    );
+  }
+
+  if (!values.every(Number.isFinite)) {
+    throw new WindowLevelError(
+      "Percentile values must be finite.",
+    );
+  }
+
+  const ordered = Array.from(values).sort(
+    (a, b) => a - b,
+  );
+
+  const rank = (
+    percentile / 100
+  ) * (ordered.length - 1);
+
+  const lowerIndex = Math.floor(rank);
+  const upperIndex = Math.ceil(rank);
+  const fraction = rank - lowerIndex;
+
+  const lower = ordered[lowerIndex];
+  const upper = ordered[upperIndex];
+
+  return lower + (
+    upper - lower
+  ) * fraction;
+}
+
+
+// ============================================================
+// 11 — AUTOMATIC WINDOW ESTIMATION
+// ============================================================
+
+export function estimateAutoWindow(
+  values: Float32Array | Float64Array,
+  options: AutoWindowOptions = {},
+): WindowLevel {
+  const lowPercentile =
+    options.lowPercentile ??
+    DEFAULT_AUTO_LOW_PERCENTILE;
+
+  const highPercentile =
+    options.highPercentile ??
+    DEFAULT_AUTO_HIGH_PERCENTILE;
+
+  const sampleLimit =
+    options.sampleLimit ??
+    DEFAULT_AUTO_SAMPLE_LIMIT;
+
+  const minimumWidth =
+    options.minimumWidth ??
+    MIN_WINDOW_WIDTH;
+
+  if (
+    !isFiniteNumber(lowPercentile) ||
+    !isFiniteNumber(highPercentile) ||
+    lowPercentile < 0 ||
+    highPercentile > 100 ||
+    lowPercentile >= highPercentile ||
+    !isFiniteNumber(minimumWidth) ||
+    minimumWidth < MIN_WINDOW_WIDTH ||
+    minimumWidth > MAX_WINDOW_WIDTH
+  ) {
+    throw new WindowLevelError(
+      "Invalid automatic window options.",
+    );
+  }
+
+  const sampled = sampleFiniteIntensities(
+    values,
+    sampleLimit,
+  );
+
+  if (sampled.length === 0) {
+    return createWindowLevel(
+      DEFAULT_WINDOW_CENTER,
+      DEFAULT_WINDOW_WIDTH,
+    );
+  }
+
+  const low = estimatePercentile(
+    sampled,
+    lowPercentile,
+  );
+
+  const high = estimatePercentile(
+    sampled,
+    highPercentile,
+  );
+
+  const estimated = windowLevelFromRange(
+    low,
+    high,
+  );
+
+  return createWindowLevel(
+    estimated.center,
+    Math.min(
+      MAX_WINDOW_WIDTH,
+      Math.max(
+        estimated.width,
+        minimumWidth,
+      ),
+    ),
+  );
+}
+
+
+// ============================================================
+// 12 — GRAYSCALE IMAGE RENDERING
+// ============================================================
+
+export function renderGrayscale(
+  values: Float32Array | Float64Array,
+  width: number,
+  height: number,
+  options: RenderOptions,
+): GrayscaleImage {
+  ensureIntensities(values);
+
+  validateImageSize(
+    width,
+    height,
+    values.length,
+    1,
+  );
+
+  validateWindowLevel(options.window);
+
+  const adjustments = normalizeAdjustments(
+    options.adjustments,
+  );
+
+  const invalidPixel = byteValue(
+    options.invalidPixelValue ?? 0,
+  );
+
+  const pixels = new Uint8ClampedArray(
+    values.length,
+  );
+
+  for (let index = 0; index < values.length; index++) {
+    pixels[index] = mapPreparedIntensity(
+      values[index],
+      options.window,
+      adjustments,
+      invalidPixel,
+    );
+  }
+
+  return {
+    width,
+    height,
+    pixels,
+  };
+}
+
+
+// ============================================================
+// 13 — RGBA IMAGE RENDERING
+// ============================================================
+
+/**
+ * Creates RGBA pixels suitable for ImageData.
+ *
+ * Every rendered pixel is opaque. Invalid source
+ * intensities use the configured grayscale fill.
+ */
+export function renderRGBA(
+  values: Float32Array | Float64Array,
+  width: number,
+  height: number,
+  options: RenderOptions,
+): RGBAImage {
+  ensureIntensities(values);
+
+  validateImageSize(
+    width,
+    height,
+    values.length,
+    4,
+  );
+
+  validateWindowLevel(options.window);
+
+  const adjustments = normalizeAdjustments(
+    options.adjustments,
+  );
+
+  const invalidPixel = byteValue(
+    options.invalidPixelValue ?? 0,
+  );
+
+  const pixels = new Uint8ClampedArray(
+    values.length * 4,
+  );
+
+  for (let index = 0; index < values.length; index++) {
+    const gray = mapPreparedIntensity(
+      values[index],
+      options.window,
+      adjustments,
+      invalidPixel,
+    );
+
+    const offset = index * 4;
+
+    pixels[offset] = gray;
+    pixels[offset + 1] = gray;
+    pixels[offset + 2] = gray;
+    pixels[offset + 3] = UINT8_MAX;
+  }
+
+  return {
+    width,
+    height,
+    pixels,
+  };
+}
+
+
+// ============================================================
+// 14 — GRAYSCALE TO RGBA
+// ============================================================
+
+export function grayscaleToRGBA(
+  image: GrayscaleImage,
+): RGBAImage {
+  if (
+    !isPositiveInteger(image.width) ||
+    !isPositiveInteger(image.height) ||
+    !(image.pixels instanceof Uint8ClampedArray)
+  ) {
+    throw new WindowLevelError(
+      "Invalid grayscale image.",
+    );
+  }
+
+  validateImageSize(
+    image.width,
+    image.height,
+    image.pixels.length,
+    4,
+  );
+
+  const rgba = new Uint8ClampedArray(
+    image.pixels.length * 4,
+  );
+
+  for (
+    let index = 0;
+    index < image.pixels.length;
+    index++
+  ) {
+    const value = image.pixels[index];
+    const offset = index * 4;
+
+    rgba[offset] = value;
+    rgba[offset + 1] = value;
+    rgba[offset + 2] = value;
+    rgba[offset + 3] = UINT8_MAX;
+  }
+
+  return {
+    width: image.width,
+    height: image.height,
+    pixels: rgba,
+  };
+}
+
+
+// ============================================================
+// 15 — SIMPLE GRAYSCALE INVERSION
+// ============================================================
+
+export function invertGrayscale(
+  pixels: Uint8ClampedArray,
+): Uint8ClampedArray {
+  if (!(pixels instanceof Uint8ClampedArray)) {
+    throw new WindowLevelError(
+      "Expected an 8-bit grayscale array.",
+    );
+  }
+
+  const output = new Uint8ClampedArray(
+    pixels.length,
+  );
+
+  for (let index = 0; index < pixels.length; index++) {
+    output[index] = UINT8_MAX - pixels[index];
+  }
+
+  return output;
+}
+
+
+// ============================================================
+// 16 — DEFAULT DISPLAY PRESETS
+// ============================================================
+
+/**
+ * Generic starting presets only.
+ *
+ * Their numeric values are meaningful as CT HU windows
+ * only when the upstream pipeline has established that
+ * the intensities are calibrated HU.
+ *
+ * For uncalibrated CBCT use estimateAutoWindow() or
+ * an explicitly selected source-intensity window.
+ */
+export const WINDOW_PRESETS = {
+  default: {
+    center: DEFAULT_WINDOW_CENTER,
+    width: DEFAULT_WINDOW_WIDTH,
+  },
+  narrow: {
+    center: 0,
+    width: 150,
+  },
+  wide: {
+    center: 0,
+    width: 1500,
+  },
+} as const satisfies Readonly<
+  Record<string, WindowLevel>
+>;
+
+
+// ============================================================
+// 17 — CAPABILITIES
+// ============================================================
+
+export function getWindowLevelCapabilities() {
+  return {
+    displayMapping: "DICOM_LINEAR",
+    grayscaleOutput: "uint8",
+    rgbaOutput: "uint8",
+    automaticWindow: true,
+    deterministicSampling: true,
+    brightnessContrast: true,
+    invert: true,
+    assumesCalibratedHU: false,
+    modifiesSourceVoxels: false,
+  } as const;
+}
+
+
+// ============================================================
+// END OF SINUS VIEWER WINDOW / LEVEL UTILITIES
+// ============================================================

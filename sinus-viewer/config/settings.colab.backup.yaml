@@ -1,0 +1,275 @@
+
+# ============================================================
+# SINUS VIEWER — CENTRAL APPLICATION CONFIGURATION
+# Version: 0.1.0
+# Environment: Google Colab (primary)
+#
+# IMPORTANT:
+# - Never modify original DICOM datasets.
+# - Do not store patient data in application logs.
+# - Runtime secrets are provided through environment variables.
+# - Local Windows dependency installation is not required.
+# ============================================================
+
+application:
+  name: "Sinus Viewer"
+  version: "0.1.0"
+  environment: "development"
+  debug: false
+  timezone: "UTC"
+
+  viewer:
+    title: "Sinus Viewer"
+    default_theme: "dark"
+    default_layout: "2x2"
+    default_page: "datasets"
+    enable_3d: true
+    enable_measurements: true
+    enable_crosshairs: true
+    enable_keyboard_shortcuts: true
+    show_dicom_metadata: true
+    show_patient_identifiers: false
+
+server:
+  host: "127.0.0.1"
+  port: 8000
+  workers: 1
+  reload: false
+
+  api_prefix: "/api"
+  docs_enabled: false
+
+  request_timeout_seconds: 120
+
+  cors:
+    enabled: false
+    allowed_origins: []
+    allow_credentials: false
+
+  limits:
+    max_concurrent_volume_loads: 1
+    max_concurrent_metadata_scans: 2
+    max_request_body_mb: 16
+
+storage:
+  dataset:
+    access_mode: "read_only"
+    root_path: "/content/drive/MyDrive"
+    allow_arbitrary_filesystem_paths: false
+    follow_symlinks: false
+    allow_hidden_directories: false
+
+  runtime:
+    root_path: "/content/sinus_viewer_runtime"
+    cache_path: "/content/sinus_viewer_runtime/cache"
+    temp_path: "/content/sinus_viewer_runtime/temp"
+    logs_path: "/content/sinus_viewer_runtime/logs"
+
+  cleanup:
+    delete_runtime_cache_on_exit: true
+    delete_temporary_files_on_exit: true
+    never_cleanup_dataset_paths: true
+
+dicom:
+  discovery:
+    recursive: true
+    max_directory_depth: 12
+    supported_extensions:
+      - ".dcm"
+      - ".dicom"
+      - ".ima"
+      - ""
+    detect_extensionless_dicom: true
+    ignore_hidden_files: true
+    ignore_dicomdir: true
+    use_metadata_not_filename_order: true
+
+  metadata:
+    stop_before_pixels: true
+    require_patient_id: false
+    require_study_uid: false
+    require_series_uid: false
+    mask_identifiers_in_logs: true
+
+  series:
+    allow_multiple_series_per_patient: true
+    group_by_study_and_series_uid: true
+    auto_select_largest_series: false
+    minimum_slices_for_volume: 3
+    reject_mixed_orientation: true
+    reject_mixed_dimensions: true
+    reject_inconsistent_geometry: true
+    slice_spacing_tolerance_mm: 0.15
+
+  decoding:
+    enable_compressed_dicom: true
+    prefer_simpleitk: true
+    fallback_to_pydicom: true
+    require_pixel_data: true
+    validate_pixel_array: true
+
+  volume:
+    output_axis_order: "zyx"
+    preserve_original_spacing: true
+    preserve_patient_orientation: true
+    coordinate_system: "LPS"
+    allow_nonuniform_spacing_without_resampling: false
+    resample_nonuniform_spacing: false
+    pixel_dtype_policy: "preserve"
+    modality_lut: true
+
+    max_voxels: 268435456
+    max_uncompressed_volume_mb: 2048
+
+    preview:
+      enabled: true
+      max_dimension: 384
+      downsample_only: true
+
+    full_resolution:
+      enabled: true
+      load_on_demand: true
+
+hardware:
+  selection_mode: "auto"
+
+  priority:
+    - "gpu"
+    - "cpu"
+
+  cpu:
+    enabled: true
+    max_workers: 4
+    reserve_system_memory_gb: 2
+
+  gpu:
+    enabled: true
+    detect_cuda: true
+    enable_optional_gpu_preprocessing: true
+    minimum_free_vram_gb: 2
+
+    supported_targets:
+      - "NVIDIA_T4"
+      - "NVIDIA_L4"
+      - "NVIDIA_A100"
+
+  tpu:
+    enabled: false
+
+  browser:
+    prefer_webgl2: true
+    allow_webgl1_fallback: false
+    enable_gpu_rendering: true
+
+performance:
+  indexing:
+    use_background_threads: true
+    batch_size: 64
+    metadata_cache_enabled: true
+
+  streaming:
+    enabled: true
+    progressive_loading: true
+    chunk_size_kb: 1024
+    max_parallel_requests: 4
+
+  memory:
+    enable_memory_guard: true
+    max_ram_utilization_percent: 75
+    minimum_free_ram_gb: 2
+
+  cache:
+    enabled: true
+    storage: "disk"
+    max_disk_cache_gb: 8
+    max_in_memory_volumes: 1
+    cache_ttl_minutes: 120
+    invalidate_on_source_change: true
+
+  rendering:
+    preferred_backend: "browser_webgl"
+    enable_volume_rendering: true
+    enable_mpr: true
+    enable_interactive_quality_adaptation: true
+    desired_interaction_fps: 60
+    idle_quality_restore_ms: 300
+
+security:
+  require_authentication: true
+  allow_anonymous_access: false
+  allow_public_dataset_browsing: false
+
+  credentials:
+    source: "environment"
+    username_env: "SINUS_VIEWER_USERNAME"
+    password_hash_env: "SINUS_VIEWER_PASSWORD_HASH"
+
+  sessions:
+    enabled: true
+    idle_timeout_minutes: 30
+    absolute_timeout_hours: 8
+    cookie_http_only: true
+    cookie_secure: true
+    cookie_same_site: "lax"
+
+  access:
+    restrict_paths_to_dataset_root: true
+    reject_path_traversal: true
+    reject_symlinks: true
+    require_authenticated_api: true
+
+  logging:
+    log_patient_names: false
+    log_patient_ids: false
+    log_dicom_metadata: false
+    log_request_bodies: false
+    redact_query_parameters: true
+
+deployment:
+  platform: "google_colab"
+
+  dependencies:
+    install_on_colab: true
+    install_locally: false
+    build_frontend_on_colab: true
+
+  frontend:
+    serve_from_fastapi: true
+    build_directory: "frontend/dist"
+
+  external_access:
+    enabled: true
+    provider: "configurable"
+    expose_single_authenticated_origin: true
+    require_https: true
+    display_access_url_in_colab: true
+
+  startup:
+    check_dependencies: true
+    check_drive_mount: true
+    check_available_memory: true
+    check_gpu: true
+    check_frontend_build: true
+    check_backend_health: true
+
+logging:
+  level: "INFO"
+  console: true
+  file_enabled: true
+  format: "structured"
+  rotate_mb: 20
+  retention_days: 7
+  include_tracebacks: false
+  redact_sensitive_fields: true
+
+errors:
+  expose_internal_tracebacks_to_browser: false
+  show_user_friendly_messages: true
+  enable_retry_for_transient_failures: true
+  maximum_retry_attempts: 2
+
+  recovery:
+    allow_return_to_patient_list: true
+    allow_select_another_series: true
+    clear_failed_volume_cache: true
+    preserve_navigation_state: true

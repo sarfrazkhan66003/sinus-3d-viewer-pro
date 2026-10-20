@@ -1,0 +1,843 @@
+
+/*
+ * SINUS VIEWER — GLOBAL STYLES
+ * ============================================
+ *
+ * Tailwind CSS v3 + React + Vite
+ *
+ * Global design:
+ * - Dark medical imaging workspace
+ * - Comfortable text and control contrast
+ * - Consistent interactive states
+ * - Reusable MPR / 3D viewer surfaces
+ * - Responsive panel layouts
+ * - Accessible keyboard focus
+ * - Reduced-motion support
+ *
+ * Important:
+ * This file contains presentation rules only.
+ * It does not read or modify patient datasets.
+ */
+
+/* ============================================
+   01 — TAILWIND DIRECTIVES
+   ============================================ */
+
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+/* ============================================
+   02 — DESIGN TOKENS
+   ============================================ */
+
+:root {
+  color-scheme: dark;
+
+  font-family:
+    Inter,
+    ui-sans-serif,
+    system-ui,
+    -apple-system,
+    BlinkMacSystemFont,
+    "Segoe UI",
+    sans-serif;
+
+  font-synthesis: none;
+  text-rendering: optimizeLegibility;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+
+  --sv-background: #080d15;
+  --sv-surface: #101824;
+  --sv-surface-raised: #172231;
+  --sv-surface-hover: #1c2b3c;
+  --sv-surface-selected: #123447;
+
+  --sv-viewport: #030507;
+  --sv-viewport-border: #293444;
+
+  --sv-border: #263447;
+  --sv-border-strong: #394b63;
+
+  --sv-text: #edf3fa;
+  --sv-text-secondary: #b5c3d4;
+  --sv-text-muted: #8899ad;
+
+  --sv-primary: #22d3ee;
+  --sv-primary-hover: #67e8f9;
+  --sv-primary-soft: rgba(34, 211, 238, 0.12);
+
+  --sv-success: #34d399;
+  --sv-warning: #fbbf24;
+  --sv-danger: #fb7185;
+
+  --sv-axial: #f87171;
+  --sv-coronal: #4ade80;
+  --sv-sagittal: #60a5fa;
+  --sv-volume: #c084fc;
+
+  --sv-radius-sm: 6px;
+  --sv-radius-md: 10px;
+  --sv-radius-lg: 14px;
+  --sv-radius-xl: 18px;
+
+  --sv-header-height: 64px;
+  --sv-toolbar-height: 44px;
+  --sv-sidebar-width: 296px;
+
+  --sv-shadow:
+    0 12px 32px rgba(0, 0, 0, 0.22);
+
+  --sv-focus-ring:
+    0 0 0 3px rgba(34, 211, 238, 0.32);
+}
+
+/* ============================================
+   03 — DOCUMENT BASE
+   ============================================ */
+
+@layer base {
+  *,
+  *::before,
+  *::after {
+    box-sizing: border-box;
+  }
+
+  html {
+    min-width: 320px;
+    min-height: 100%;
+    background: var(--sv-background);
+    scroll-behavior: smooth;
+    -webkit-text-size-adjust: 100%;
+  }
+
+  body {
+    min-width: 320px;
+    min-height: 100vh;
+    margin: 0;
+    background: var(--sv-background);
+    color: var(--sv-text);
+    line-height: 1.5;
+  }
+
+  #root {
+    min-height: 100vh;
+    isolation: isolate;
+  }
+
+  button,
+  input,
+  select,
+  textarea {
+    font: inherit;
+  }
+
+  button {
+    cursor: pointer;
+  }
+
+  button:disabled {
+    cursor: not-allowed;
+  }
+
+  img,
+  canvas,
+  video,
+  svg {
+    max-width: 100%;
+  }
+
+  img,
+  video {
+    height: auto;
+  }
+
+  a {
+    color: inherit;
+    text-decoration: none;
+  }
+
+  a:hover {
+    color: var(--sv-primary-hover);
+  }
+
+  ::selection {
+    color: #ffffff;
+    background: #155e75;
+  }
+
+  :focus-visible {
+    outline: 2px solid var(--sv-primary);
+    outline-offset: 3px;
+  }
+
+  input:focus-visible,
+  select:focus-visible,
+  textarea:focus-visible {
+    outline-offset: 1px;
+  }
+}
+
+/* ============================================
+   04 — GLOBAL SCROLLBARS
+   ============================================ */
+
+html {
+  scrollbar-color: #42546a #111925;
+  scrollbar-width: thin;
+}
+
+::-webkit-scrollbar {
+  width: 10px;
+  height: 10px;
+}
+
+::-webkit-scrollbar-track {
+  background: #111925;
+}
+
+::-webkit-scrollbar-thumb {
+  border: 2px solid #111925;
+  border-radius: 999px;
+  background: #42546a;
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background: #5c7189;
+}
+
+::-webkit-scrollbar-corner {
+  background: #111925;
+}
+
+/* ============================================
+   05 — APPLICATION LAYOUT
+   ============================================ */
+
+@layer components {
+  .sv-app {
+    display: flex;
+    width: 100%;
+    min-height: 100vh;
+    flex-direction: column;
+    background: var(--sv-background);
+    color: var(--sv-text);
+  }
+
+  .sv-app-header {
+    position: relative;
+    z-index: 20;
+    display: flex;
+    min-height: var(--sv-header-height);
+    align-items: center;
+    justify-content: space-between;
+    gap: 16px;
+    border-bottom: 1px solid var(--sv-border);
+    background: var(--sv-surface);
+    padding: 12px 20px;
+  }
+
+  .sv-app-content {
+    display: flex;
+    min-width: 0;
+    min-height: 0;
+    flex: 1 1 auto;
+  }
+
+  .sv-sidebar {
+    display: flex;
+    width: var(--sv-sidebar-width);
+    min-width: 0;
+    flex: 0 0 var(--sv-sidebar-width);
+    flex-direction: column;
+    overflow: hidden;
+    border-right: 1px solid var(--sv-border);
+    background: var(--sv-surface);
+  }
+
+  .sv-sidebar-scroll {
+    min-height: 0;
+    flex: 1 1 auto;
+    overflow: auto;
+    overscroll-behavior: contain;
+  }
+
+  .sv-panel {
+    min-width: 0;
+    border: 1px solid var(--sv-border);
+    border-radius: var(--sv-radius-lg);
+    background: var(--sv-surface);
+  }
+
+  .sv-panel-header {
+    display: flex;
+    min-height: 44px;
+    align-items: center;
+    justify-content: space-between;
+    gap: 12px;
+    border-bottom: 1px solid var(--sv-border);
+    padding: 10px 14px;
+  }
+
+  .sv-panel-body {
+    min-width: 0;
+    padding: 14px;
+  }
+
+  .sv-surface-raised {
+    background: var(--sv-surface-raised);
+  }
+
+  .sv-divider {
+    height: 1px;
+    border: 0;
+    background: var(--sv-border);
+  }
+
+  /* ========================================
+     06 — BUTTONS AND FORM CONTROLS
+     ======================================== */
+
+  .sv-button {
+    display: inline-flex;
+    min-height: 36px;
+    align-items: center;
+    justify-content: center;
+    gap: 8px;
+    border: 1px solid var(--sv-border-strong);
+    border-radius: var(--sv-radius-md);
+    background: var(--sv-surface-raised);
+    padding: 8px 14px;
+    color: var(--sv-text);
+    font-size: 0.875rem;
+    font-weight: 600;
+    line-height: 1.25;
+    transition:
+      background-color 150ms ease,
+      border-color 150ms ease,
+      color 150ms ease;
+  }
+
+  .sv-button:hover:not(:disabled) {
+    border-color: #55728c;
+    background: var(--sv-surface-hover);
+  }
+
+  .sv-button:disabled {
+    opacity: 0.5;
+  }
+
+  .sv-button-primary {
+    border-color: #0891b2;
+    background: #0891b2;
+    color: #ffffff;
+  }
+
+  .sv-button-primary:hover:not(:disabled) {
+    border-color: #06b6d4;
+    background: #0e7490;
+  }
+
+  .sv-button-danger {
+    border-color: #9f1239;
+    background: #881337;
+    color: #ffe4e6;
+  }
+
+  .sv-button-danger:hover:not(:disabled) {
+    background: #9f1239;
+  }
+
+  .sv-icon-button {
+    display: inline-flex;
+    width: 36px;
+    height: 36px;
+    flex: 0 0 36px;
+    align-items: center;
+    justify-content: center;
+    border: 1px solid var(--sv-border);
+    border-radius: var(--sv-radius-md);
+    background: transparent;
+    color: var(--sv-text-secondary);
+  }
+
+  .sv-icon-button:hover:not(:disabled) {
+    background: var(--sv-surface-hover);
+    color: var(--sv-text);
+  }
+
+  .sv-input {
+    display: block;
+    width: 100%;
+    min-height: 38px;
+    border: 1px solid var(--sv-border-strong);
+    border-radius: var(--sv-radius-md);
+    background: var(--sv-background);
+    padding: 8px 12px;
+    color: var(--sv-text);
+    font-size: 0.875rem;
+  }
+
+  .sv-input::placeholder {
+    color: var(--sv-text-muted);
+  }
+
+  .sv-input:focus {
+    border-color: var(--sv-primary);
+    box-shadow: var(--sv-focus-ring);
+    outline: none;
+  }
+
+  .sv-input:disabled {
+    opacity: 0.5;
+  }
+
+  .sv-label {
+    display: block;
+    margin-bottom: 6px;
+    color: var(--sv-text-secondary);
+    font-size: 0.8125rem;
+    font-weight: 600;
+  }
+
+  /* ========================================
+     07 — VIEWER WORKSPACE
+     ======================================== */
+
+  .sv-viewer-workspace {
+    display: flex;
+    min-width: 0;
+    min-height: 0;
+    flex: 1 1 auto;
+    flex-direction: column;
+    overflow: hidden;
+    background: var(--sv-background);
+  }
+
+  .sv-viewer-toolbar {
+    display: flex;
+    min-height: var(--sv-toolbar-height);
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 8px;
+    border-bottom: 1px solid var(--sv-border);
+    background: var(--sv-surface);
+    padding: 7px 12px;
+  }
+
+  .sv-viewer-grid {
+    display: grid;
+    min-width: 0;
+    min-height: 0;
+    flex: 1 1 auto;
+    grid-template-columns:
+      minmax(0, 1fr)
+      minmax(0, 1fr);
+    grid-template-rows:
+      minmax(0, 1fr)
+      minmax(0, 1fr);
+    gap: 5px;
+    overflow: hidden;
+    padding: 5px;
+    background: #050910;
+  }
+
+  .sv-viewport {
+    position: relative;
+    min-width: 0;
+    min-height: 0;
+    overflow: hidden;
+    border: 1px solid var(--sv-viewport-border);
+    border-radius: var(--sv-radius-sm);
+    background: var(--sv-viewport);
+    color: #ffffff;
+    isolation: isolate;
+  }
+
+  .sv-viewport:focus-within {
+    border-color: var(--sv-primary);
+  }
+
+  .sv-viewport-active {
+    border-color: var(--sv-primary);
+    box-shadow: inset 0 0 0 1px var(--sv-primary);
+  }
+
+  .sv-viewport-canvas {
+    display: block;
+    width: 100%;
+    height: 100%;
+    max-width: none;
+    background: transparent;
+    touch-action: none;
+  }
+
+  .sv-viewport-overlay {
+    position: absolute;
+    z-index: 2;
+    pointer-events: none;
+  }
+
+  .sv-viewport-top-left {
+    top: 12px;
+    left: 12px;
+  }
+
+  .sv-viewport-top-right {
+    top: 12px;
+    right: 12px;
+    text-align: right;
+  }
+
+  .sv-viewport-bottom-left {
+    bottom: 12px;
+    left: 12px;
+  }
+
+  .sv-viewport-bottom-right {
+    right: 12px;
+    bottom: 12px;
+    text-align: right;
+  }
+
+  .sv-viewport-label {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    border: 1px solid rgba(255, 255, 255, 0.12);
+    border-radius: 4px;
+    background: rgba(0, 0, 0, 0.62);
+    padding: 4px 7px;
+    color: #f8fafc;
+    font-size: 11px;
+    font-weight: 600;
+    letter-spacing: 0.035em;
+  }
+
+  .sv-viewport-empty {
+    display: flex;
+    width: 100%;
+    height: 100%;
+    min-height: 180px;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    gap: 10px;
+    padding: 20px;
+    color: var(--sv-text-muted);
+    text-align: center;
+  }
+
+  /* ========================================
+     08 — IMAGING PLANE IDENTIFIERS
+     ======================================== */
+
+  .sv-plane-axial {
+    --sv-plane-color: var(--sv-axial);
+  }
+
+  .sv-plane-coronal {
+    --sv-plane-color: var(--sv-coronal);
+  }
+
+  .sv-plane-sagittal {
+    --sv-plane-color: var(--sv-sagittal);
+  }
+
+  .sv-plane-volume {
+    --sv-plane-color: var(--sv-volume);
+  }
+
+  .sv-plane-indicator {
+    width: 8px;
+    height: 8px;
+    flex: 0 0 8px;
+    border-radius: 50%;
+    background: var(--sv-plane-color, var(--sv-primary));
+  }
+
+  .sv-plane-border {
+    border-top: 2px solid
+      var(--sv-plane-color, var(--sv-primary));
+  }
+
+  .sv-crosshair-line {
+    position: absolute;
+    z-index: 3;
+    pointer-events: none;
+    opacity: 0.82;
+  }
+
+  .sv-crosshair-horizontal {
+    right: 0;
+    left: 0;
+    height: 1px;
+    background: var(--sv-plane-color, var(--sv-primary));
+  }
+
+  .sv-crosshair-vertical {
+    top: 0;
+    bottom: 0;
+    width: 1px;
+    background: var(--sv-plane-color, var(--sv-primary));
+  }
+
+  /* ========================================
+     09 — PATIENT AND SERIES BROWSER
+     ======================================== */
+
+  .sv-browser-list {
+    min-height: 0;
+    overflow-y: auto;
+    overscroll-behavior: contain;
+  }
+
+  .sv-browser-item {
+    display: flex;
+    width: 100%;
+    min-height: 42px;
+    align-items: center;
+    gap: 10px;
+    border: 1px solid transparent;
+    border-radius: var(--sv-radius-sm);
+    background: transparent;
+    padding: 9px 10px;
+    color: var(--sv-text-secondary);
+    text-align: left;
+  }
+
+  .sv-browser-item:hover {
+    background: var(--sv-surface-hover);
+    color: var(--sv-text);
+  }
+
+  .sv-browser-item-selected {
+    border-color: rgba(34, 211, 238, 0.25);
+    background: var(--sv-surface-selected);
+    color: var(--sv-text);
+  }
+
+  .sv-browser-item:focus-visible {
+    outline-offset: -2px;
+  }
+
+  .sv-status-dot {
+    display: inline-block;
+    width: 7px;
+    height: 7px;
+    flex: 0 0 7px;
+    border-radius: 50%;
+    background: var(--sv-text-muted);
+  }
+
+  .sv-status-ready {
+    background: var(--sv-success);
+  }
+
+  .sv-status-warning {
+    background: var(--sv-warning);
+  }
+
+  .sv-status-error {
+    background: var(--sv-danger);
+  }
+
+  /* ========================================
+     10 — STATUS AND UTILITY COMPONENTS
+     ======================================== */
+
+  .sv-status-bar {
+    display: flex;
+    min-height: 28px;
+    align-items: center;
+    justify-content: space-between;
+    gap: 10px;
+    border-top: 1px solid var(--sv-border);
+    background: var(--sv-surface);
+    padding: 4px 12px;
+    color: var(--sv-text-secondary);
+    font-size: 11px;
+  }
+
+  .sv-badge {
+    display: inline-flex;
+    min-height: 22px;
+    align-items: center;
+    border: 1px solid var(--sv-border-strong);
+    border-radius: 999px;
+    padding: 2px 8px;
+    color: var(--sv-text-secondary);
+    font-size: 11px;
+    font-weight: 600;
+  }
+
+  .sv-alert {
+    border: 1px solid var(--sv-border);
+    border-radius: var(--sv-radius-md);
+    background: var(--sv-surface-raised);
+    padding: 12px 14px;
+    color: var(--sv-text);
+    font-size: 0.875rem;
+  }
+
+  .sv-alert-warning {
+    border-color: #92400e;
+    background: rgba(120, 53, 15, 0.2);
+    color: #fde68a;
+  }
+
+  .sv-alert-error {
+    border-color: #9f1239;
+    background: rgba(136, 19, 55, 0.2);
+    color: #fecdd3;
+  }
+
+  .sv-skeleton {
+    border-radius: var(--sv-radius-sm);
+    background: linear-gradient(
+      90deg,
+      #1a2635 0%,
+      #28394c 50%,
+      #1a2635 100%
+    );
+    background-size: 200% 100%;
+    animation: sv-shimmer 1.5s ease-in-out infinite;
+  }
+
+  .sv-visually-hidden {
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    overflow: hidden;
+    clip: rect(0, 0, 0, 0);
+    white-space: nowrap;
+    clip-path: inset(50%);
+  }
+
+  .sv-truncate {
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+}
+
+/* ============================================
+   11 — ANIMATIONS
+   ============================================ */
+
+@keyframes sv-shimmer {
+  from {
+    background-position: 200% 0;
+  }
+
+  to {
+    background-position: -200% 0;
+  }
+}
+
+/* ============================================
+   12 — TABLET AND SMALL WINDOWS
+   ============================================ */
+
+@media (max-width: 1024px) {
+  :root {
+    --sv-sidebar-width: 248px;
+  }
+
+  .sv-app-header {
+    padding-inline: 14px;
+  }
+
+  .sv-viewer-toolbar {
+    gap: 6px;
+  }
+}
+
+@media (max-width: 768px) {
+  :root {
+    --sv-sidebar-width: 100%;
+  }
+
+  .sv-app-content {
+    flex-direction: column;
+  }
+
+  .sv-sidebar {
+    width: 100%;
+    max-height: 260px;
+    flex-basis: auto;
+    border-right: 0;
+    border-bottom: 1px solid var(--sv-border);
+  }
+
+  .sv-viewer-workspace {
+    min-height: 520px;
+  }
+
+  .sv-viewer-grid {
+    min-height: 520px;
+  }
+
+  .sv-viewport-overlay {
+    font-size: 10px;
+  }
+}
+
+@media (max-width: 480px) {
+  .sv-app-header {
+    align-items: flex-start;
+    padding: 12px;
+  }
+
+  .sv-viewer-grid {
+    grid-template-columns: minmax(0, 1fr);
+    grid-template-rows: repeat(4, minmax(200px, 1fr));
+    overflow-y: auto;
+  }
+
+  .sv-viewport {
+    min-height: 200px;
+  }
+
+  .sv-status-bar {
+    flex-wrap: wrap;
+  }
+}
+
+/* ============================================
+   13 — ACCESSIBILITY PREFERENCES
+   ============================================ */
+
+@media (prefers-reduced-motion: reduce) {
+  html {
+    scroll-behavior: auto;
+  }
+
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+    scroll-behavior: auto !important;
+  }
+}
+
+@media (forced-colors: active) {
+  .sv-button,
+  .sv-icon-button,
+  .sv-input,
+  .sv-viewport {
+    border: 1px solid CanvasText;
+  }
+
+  .sv-browser-item-selected {
+    outline: 2px solid Highlight;
+  }
+}
+
+/* ============================================
+   END OF SINUS VIEWER GLOBAL STYLES
+   ============================================ */
