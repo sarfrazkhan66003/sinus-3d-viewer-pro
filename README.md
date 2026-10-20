@@ -106,29 +106,53 @@ flowchart TD
 
 ### How a DICOM study becomes a browser-rendered volume
 
+### How a DICOM Study Becomes a Browser-Rendered Volume
+
 ```mermaid
 sequenceDiagram
     autonumber
-    actor U as User
+
+    participant U as User
     participant N as Colab Notebook
-    participant D as Read-only DICOM Folder
-    participant API as FastAPI
-    participant B as Browser
-    U->>N: Paste authorized patient folder path
-    N->>D: Scan and inspect series
-    D-->>N: Headers, slices and geometry
-    N->>N: Decode / organize volume; create runtime files
-    N->>API: Start server and endpoints
-    N-->>U: Temporary URL and login details
-    U->>B: Open HTTPS link and authenticate
-    B->>API: Request volume metadata/data
-    API-->>B: Compressed volume + 3D payload
-    loop Mouse wheel / slice slider
-        U->>B: Navigate slice
-        B->>B: Select and draw slice locally
+    participant D as DICOM Dataset
+    participant S as FastAPI Server
+    participant B as Web Browser
+
+    U->>N: Enter patient folder path
+    N->>D: Scan available DICOM files
+    D-->>N: Return image slices and metadata
+
+    N->>N: Validate and organize DICOM series
+    N->>N: Decode image slices
+    N->>N: Reconstruct 3D volume
+    N->>N: Generate optimized runtime files
+
+    N->>S: Start FastAPI backend
+    S-->>N: Server running
+
+    N-->>U: Generate secure viewer URL
+    U->>B: Open viewer URL
+    B->>S: Request authentication
+    S-->>B: Authentication successful
+
+    B->>S: Request volume metadata
+    S-->>B: Return metadata
+
+    B->>S: Request compressed volume
+    S-->>B: Deliver optimized volume
+
+    B->>B: Initialize MPR rendering engine
+    B->>B: Initialize VTK.js 3D renderer
+
+    loop Slice Navigation
+        U->>B: Scroll mouse wheel
+        B->>B: Update active slice locally
+        B->>B: Render selected MPR plane
     end
-    U->>B: Orbit / zoom volume
-    B->>B: Render 3D with VTK.js
+
+    U->>B: Rotate or zoom 3D volume
+    B->>B: Update interactive 3D visualization
+```
 ```
 
 ### The four-view workspace
