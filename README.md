@@ -104,8 +104,6 @@ flowchart TD
     style K fill:#eaf8ed,stroke:#36804b,color:#21562e
 ```
 
-### How a DICOM study becomes a browser-rendered volume
-
 ### How a DICOM Study Becomes a Browser-Rendered Volume
 
 ```mermaid
