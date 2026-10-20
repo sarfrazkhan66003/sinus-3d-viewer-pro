@@ -365,19 +365,19 @@ Suggested future benchmark protocol:
 > **Actual screenshots are not included in the supplied ZIP.** The image links below are prepared for you to replace with sanitized screenshots from your running viewer. The `assets/screenshots/SCREENSHOT_GUIDE.md` file explains exactly what to capture. Do not upload identifiable patient information, private paths, passwords or tunnel links.
 
 ### 1. Secure access / login
-![Secure login — add your sanitized screenshot](assets/screenshots/01-login.png)
+<img width="1917" height="927" alt="Screenshot 2026-10-20 162358" src="https://github.com/user-attachments/assets/0d7e8fd7-76ef-4c3a-831b-a1547a7f246e" />
 
 ### 2. DICOM study / series selection
-![DICOM series selection — add your sanitized screenshot](assets/screenshots/02-study-selection.png)
+<img width="1917" height="977" alt="Screenshot 2026-10-20 095343" src="https://github.com/user-attachments/assets/05f4a9b6-491f-45a1-a63b-e0a056b7769d" />
 
 ### 3. Four-panel workspace (hero image)
-![Axial, coronal, sagittal and 3D viewer — add your sanitized screenshot](assets/screenshots/03-four-panel-viewer.png)
+<img width="1917" height="935" alt="Screenshot 2026-10-20 164001" src="https://github.com/user-attachments/assets/d78883f8-ef48-4f19-adcc-1975f9619324" />
 
-### 4. Smooth multiplanar scrolling and grayscale detail
-![Three-plane MPR viewer — add your sanitized screenshot](assets/screenshots/04-mpr-axial-coronal-sagittal.png)
+### 4. Interactive 3D volume
+<img width="1917" height="1076" alt="Screenshot 2026-10-20 162525" src="https://github.com/user-attachments/assets/c4aa6b98-7d3d-46d1-9ad6-f184613a3dc7" />
 
-### 5. Interactive 3D volume
-![3D volume rendering — add your sanitized screenshot](assets/screenshots/05-volume-3d.png)
+
+
 
 For the most compelling GitHub presentation, use the **four-panel viewer** as the first real screenshot in the repository; a short, privacy-safe MP4/GIF of wheel scrolling can be added separately after capture.
 
